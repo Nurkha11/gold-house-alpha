@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gold House Preview</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f8f5ef;
+      --card: #ffffff;
+      --text: #161412;
+      --muted: #776f67;
+      --line: #e9e0d3;
+      --accent: #a9793b;
+      --accent-dark: #6f4a22;
+      --accent-soft: #f1e5d2;
+      --success: #2f7d51;
+      --success-soft: #e8f4ee;
+      --danger-soft: #f5ede8;
+      --black: #0d0d0d;
+      --shadow: 0 18px 48px rgba(42, 33, 24, .1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--surface);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, textarea {
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 16px;
+      cursor: pointer;
+      font-weight: 850;
+      min-height: 52px;
+      padding: 13px 18px;
+    }
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      color: var(--text);
+      font-weight: 650;
+      min-height: 52px;
+      padding: 13px 15px;
+      outline: none;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(40px, 7vw, 76px); line-height: .95; max-width: 820px; }
+    h2 { font-size: clamp(30px, 4vw, 48px); line-height: 1.04; }
+    h3 { font-size: 22px; line-height: 1.15; }
+    .app { max-width: 1120px; margin: 0 auto; min-height: 100vh; background: var(--bg); }
+    .topbar {
+      align-items: center;
+      background: rgba(255,255,255,.9);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      padding: 18px 22px;
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      backdrop-filter: blur(16px);
+    }
+    .brand { color: var(--accent-dark); font-weight: 950; text-transform: uppercase; }
+    .screen { padding: 34px 22px 48px; }
+    .hero {
+      min-height: calc(100vh - 72px);
+      align-items: end;
+      display: grid;
+      padding: 34px 22px 54px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.98)),
+        url("https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1600&q=80") center/cover;
+    }
+    .sub { color: var(--muted); font-size: 17px; line-height: 1.55; margin-top: 14px; max-width: 640px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .primary { background: var(--black); color: white; }
+    .gold { background: var(--accent); color: white; }
+    .soft { background: var(--accent-soft); color: var(--accent-dark); }
+    .ghost { background: var(--surface); color: var(--text); }
+    .success { background: var(--success); color: white; }
+    .danger { background: var(--danger-soft); color: #8b3528; }
+    .grid { display: grid; gap: 14px; margin-top: 24px; }
+    .choices { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .choice, .card, .section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+    .choice { padding: 20px; text-align: left; }
+    .choice.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-dark); }
+    .section { padding: 22px; margin-top: 20px; }
+    .field { display: grid; gap: 7px; margin-top: 14px; }
+    .label { color: var(--muted); font-size: 13px; font-weight: 850; }
+    .progress { height: 7px; background: var(--surface); border-radius: 999px; overflow: hidden; margin-bottom: 20px; }
+    .progress span { display: block; height: 100%; width: var(--progress); background: var(--accent); }
+    .dashboard { display: grid; grid-template-columns: .8fr 1.2fr; gap: 22px; align-items: start; }
+    .submission {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      margin-top: 12px;
+    }
+    .badge {
+      display: inline-flex;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+      font-size: 12px;
+      font-weight: 900;
+      padding: 7px 10px;
+    }
+    .green { background: var(--success-soft); color: var(--success); }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .media-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 16px; }
+    .media-item {
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      display: flex;
+      gap: 12px;
+      padding: 10px;
+    }
+    .thumb {
+      width: 70px;
+      height: 70px;
+      border-radius: 12px;
+      background: var(--black);
+      object-fit: cover;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 900;
+    }
+    .preview-card { overflow: hidden; }
+    .preview-img { width: 100%; height: 330px; object-fit: cover; display: block; }
+    .preview-body { padding: 22px; display: grid; gap: 12px; }
+    .price { font-size: 32px; font-weight: 950; }
+    .facts { display: flex; flex-wrap: wrap; gap: 8px; }
+    .fact { background: var(--surface); border-radius: 999px; padding: 8px 11px; font-size: 13px; font-weight: 850; }
+    .hidden { display: none !important; }
+    @media (max-width: 760px) {
+      .dashboard, .form-grid { grid-template-columns: 1fr; }
+      .screen { padding: 24px 16px 36px; }
+      .hero { padding: 24px 16px 42px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div class="brand">Gold House</div>
+      <button class="ghost" onclick="show('home')">Главная</button>
+    </div>
+    <div id="root"></div>
+  </main>
+
+  <script>
+    const districts = ['Бостандыкский', 'Алмалинский', 'Медеуский', 'Ауэзовский', 'Наурызбайский', 'Турксибский', 'Жетысуский', 'Алатауский'];
+    const state = {
+      screen: 'home',
+      owner: { name: '', phone: '' },
+      step: 1,
+      submissions: [
+        { status: 'На проверке', title: 'ЖК Gold Residence', district: 'Бостандыкский', price: '58 500 000 ₸', meta: '3 комн. · 82 м² · 5/11 этаж' }
+      ],
+      form: {
+        city: 'Алматы',
+        district: 'Бостандыкский',
+        complex: '',
+        address: '',
+        rooms: '2',
+        totalArea: '',
+        livingArea: '',
+        kitchenArea: '',
+        floor: '',
+        totalFloors: '',
+        year: '',
+        material: '',
+        ceiling: '',
+        bathroom: 'Раздельный',
+        balcony: 'Да',
+        elevator: 'Да',
+        parking: 'Нет',
+        price: '',
+        bargain: 'Нет',
+        mortgage: 'Да',
+        documents: 'В порядке',
+        encumbrance: 'Нет',
+        repair: 'Хороший',
+        furniture: 'Частично',
+        appliances: 'Остается частично',
+        remains: '',
+        comment: '',
+        media: []
+      }
+    };
+
+    const root = document.getElementById('root');
+    const mediaImages = [
+      'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80'
+    ];
+
+    function show(screen) {
+      state.screen = screen;
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function setField(key, value) {
+      state.form[key] = value;
+      render();
+    }
+
+    function input(key, label, placeholder = '') {
+      return `<label class="field"><span class="label">${label}</span><input value="${escapeHtml(state.form[key] || '')}" placeholder="${placeholder}" oninput="state.form['${key}']=this.value"></label>`;
+    }
+
+    function textArea(key, label) {
+      return `<label class="field"><span class="label">${label}</span><textarea oninput="state.form['${key}']=this.value">${escapeHtml(state.form[key] || '')}</textarea></label>`;
+    }
+
+    function choices(key, items) {
+      return `<div class="grid choices">${items.map(item => `<button class="choice ${state.form[key] === item ? 'active' : ''}" onclick="setField('${key}','${item}')">${item}</button>`).join('')}</div>`;
+    }
+
+    function addMedia(label, type) {
+      const count = state.form.media.length + 1;
+      state.form.media.unshift({
+        label: `${label} ${count}`,
+        type,
+        uri: type === 'photo' ? mediaImages[count % mediaImages.length] : ''
+      });
+      render();
+    }
+
+    function save(status) {
+      const title = state.form.complex || state.form.address || 'Новая квартира';
+      state.submissions.unshift({
+        status,
+        title,
+        district: state.form.district,
+        price: state.form.price ? Number(state.form.price).toLocaleString('ru-RU') + ' ₸' : 'Цена не указана',
+        meta: `${state.form.rooms} комн. · ${state.form.totalArea || '-'} м² · ${state.form.floor || '-'}/${state.form.totalFloors || '-'} этаж`
+      });
+      show('dashboard');
+    }
+
+    function home() {
+      root.innerHTML = `<section class="hero"><div><p class="brand">Gold House</p><h1>Добро пожаловать в Gold House.</h1><p class="sub">Выберите сценарий: быстро подобрать квартиру как покупатель или подать объект как собственник.</p><div class="actions"><button class="primary" onclick="show('buyer')">Начать поиск</button><button class="soft" onclick="show('login')">Я собственник</button></div></div></section>`;
+    }
+
+    function buyer() {
+      root.innerHTML = `<section class="screen"><h2>Покупательский flow</h2><p class="sub">Основной buyer-preview находится в отдельном HTML-файле. Здесь ссылка больше не падает, а кабинет собственника можно тестировать прямо сейчас.</p><div class="actions"><button class="primary" onclick="show('home')">Вернуться</button></div></section>`;
+    }
+
+    function login() {
+      root.innerHTML = `<section class="screen"><h2>Вход в кабинет собственника</h2><p class="sub">Mock login: реальной авторизации пока нет.</p><div class="section"><label class="field"><span class="label">Имя</span><input value="${escapeHtml(state.owner.name)}" oninput="state.owner.name=this.value" placeholder="Например, Айдар"></label><label class="field"><span class="label">Телефон</span><input value="${escapeHtml(state.owner.phone)}" oninput="state.owner.phone=this.value" placeholder="+7 777 000 00 00"></label><div class="actions"><button class="primary" onclick="show('dashboard')">Войти в кабинет</button></div></div></section>`;
+    }
+
+    function dashboard() {
+      root.innerHTML = `<section class="screen"><div class="dashboard"><div><h2>Здравствуйте${state.owner.name ? ', ' + escapeHtml(state.owner.name) : ''}</h2><p class="sub">Кабинет собственника для подачи квартиры на проверку Gold House.</p><div class="actions"><button class="primary" onclick="state.step=1;show('form')">Подать объявление</button></div></div><div class="section"><h3>Мои заявки</h3>${state.submissions.map(item => `<div class="submission"><span class="badge">${item.status}</span><h3 style="margin-top:12px">${escapeHtml(item.title)}</h3><p class="sub">${escapeHtml(item.district)} · ${escapeHtml(item.meta)}</p><p class="price" style="font-size:24px;margin-top:10px">${escapeHtml(item.price)}</p></div>`).join('')}</div></div></section>`;
+    }
+
+    function form() {
+      const progress = Math.round(state.step / 7 * 100);
+      const backButton = state.step > 1 ? '<button class="ghost" onclick="state.step--;render()">Назад</button>' : '';
+      const nextButton = state.step < 7 ? '<button class="primary" onclick="state.step++;render()">Далее</button>' : '';
+      const finalButtons = state.step === 7
+        ? '<button class="ghost" onclick="state.step=1;render()">Назад и исправить</button><button class="soft" onclick="save(\'Черновик\')">Сохранить как черновик</button><button class="success" onclick="save(\'Отправлена\')">Отправить заявку</button>'
+        : '';
+      root.innerHTML = `<section class="screen"><div class="progress" style="--progress:${progress}%"><span></span></div><h2>${stepTitle()}</h2><p class="sub">Шаг ${state.step} из 7. Один экран — один блок данных.</p>${stepBody()}<div class="actions">${backButton}${nextButton}${finalButtons}</div></section>`;
+    }
+
+    function stepTitle() {
+      return ['Адрес', 'Характеристики', 'Цена и условия', 'Состояние квартиры', 'Медиа', 'Видео собственника', 'Предпросмотр'][state.step - 1];
+    }
+
+    function stepBody() {
+      if (state.step === 1) return `<div class="section">${input('city','Город')}${choices('district', districts)}${input('complex','ЖК / название дома')}${input('address','Адрес')}</div>`;
+      if (state.step === 2) return `<div class="section"><p class="label">Количество комнат</p>${choices('rooms', ['1','2','3','4','5+'])}<div class="form-grid">${input('totalArea','Общая площадь')}${input('livingArea','Жилая площадь')}${input('kitchenArea','Площадь кухни')}${input('floor','Этаж')}${input('totalFloors','Этажность дома')}${input('year','Год постройки')}${input('material','Материал дома')}${input('ceiling','Высота потолков')}</div><p class="label" style="margin-top:16px">Санузел</p>${choices('bathroom',['Совмещенный','Раздельный','2 санузла'])}<p class="label" style="margin-top:16px">Балкон</p>${choices('balcony',['Да','Нет'])}<p class="label" style="margin-top:16px">Лифт</p>${choices('elevator',['Да','Нет'])}<p class="label" style="margin-top:16px">Парковка</p>${choices('parking',['Да','Нет'])}</div>`;
+      if (state.step === 3) return `<div class="section">${input('price','Цена')}${choices('bargain',['Да','Нет'])}<p class="label" style="margin-top:16px">Можно в ипотеку</p>${choices('mortgage',['Да','Нет'])}<p class="label" style="margin-top:16px">Документы</p>${choices('documents',['В порядке','Уточнить'])}<p class="label" style="margin-top:16px">Обременения</p>${choices('encumbrance',['Нет','Есть','Уточнить'])}</div>`;
+      if (state.step === 4) return `<div class="section"><p class="label">Ремонт</p>${choices('repair',['Без ремонта','Косметический','Хороший','Дизайнерский'])}${input('furniture','Мебель')}${input('appliances','Техника')}${textArea('remains','Что остается')}${textArea('comment','Комментарий собственника')}</div>`;
+      if (state.step === 5) return `<div class="section"><p class="sub">Mock upload: нажмите тип файла, и он появится в списке.</p><div class="media-grid">${['Фото квартиры','Фото двора','Фото подъезда'].map(label => `<button class="soft" onclick="addMedia('${label}','photo')">${label}</button>`).join('')}${['Видео квартиры','Видео двора','Видео подъезда','Видео собственника'].map(label => `<button class="primary" onclick="addMedia('${label}','video')">${label}</button>`).join('')}</div><div class="grid">${state.form.media.map(file => `<div class="media-item">${file.type === 'photo' ? `<img class="thumb" src="${file.uri}">` : '<div class="thumb">▶</div>'}<div><b>${escapeHtml(file.label)}</b><p class="sub" style="margin-top:2px">${file.type === 'photo' ? 'Фото' : 'Видео'}</p></div></div>`).join('')}</div></div>`;
+      if (state.step === 6) return `<div class="section"><p class="sub">Подсказка для честного видео собственника.</p>${['Представьтесь.','Почему продаете квартиру?','Что больше всего нравится в квартире?','Какие есть честные минусы?','Кому квартира подойдет лучше всего?','Если бы не продавали, за что продолжали бы жить именно здесь?'].map((q,i) => `<div class="submission"><b>${i+1}. ${q}</b></div>`).join('')}</div>`;
+      const photo = state.form.media.find(file => file.type === 'photo')?.uri || mediaImages[0];
+      return `<div class="section"><div class="card preview-card"><img class="preview-img" src="${photo}"><div class="preview-body"><div><span class="badge">Статус: Черновик</span> <span class="badge green">Gold Verified: pending</span></div><p class="price">${state.form.price ? Number(state.form.price).toLocaleString('ru-RU') + ' ₸' : 'Цена не указана'}</p><h3>${escapeHtml(state.form.complex || state.form.address || 'Новая квартира')}</h3><p class="sub">${escapeHtml(state.form.city)}, ${escapeHtml(state.form.district)}</p><div class="facts"><span class="fact">${state.form.rooms} комн.</span><span class="fact">${state.form.totalArea || '-'} м²</span><span class="fact">${state.form.floor || '-'}/${state.form.totalFloors || '-'} этаж</span></div><p>${escapeHtml(state.form.comment || 'Описание будет собрано из комментария собственника и проверки Gold House.')}</p><p class="sub"><b>Trust Index:</b> pending · Медиафайлы: ${state.form.media.length}</p></div></div></div>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+    }
+
+    function render() {
+      if (state.screen === 'home') home();
+      if (state.screen === 'buyer') buyer();
+      if (state.screen === 'login') login();
+      if (state.screen === 'dashboard') dashboard();
+      if (state.screen === 'form') form();
+    }
+
+    render();
+  </script>
+</body>
+</html>
