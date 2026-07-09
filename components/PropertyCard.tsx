@@ -1,8 +1,8 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Property } from '@/data/properties';
-import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
+import { colors, radius, shadows, spacing } from '@/constants/theme';
+import { Property } from '@/data/properties';
 
 type PropertyCardProps = {
   property: Property;
@@ -18,12 +18,12 @@ export function PropertyCard({ property, onPress }: PropertyCardProps) {
       <View style={styles.body}>
         <View style={styles.topRow}>
           <Text style={styles.price}>{formatPrice(property.price)}</Text>
-          <Badge label={`${property.matchPercent}%`} tone="green" />
+          <Badge label={`${property.matchPercent}%`} />
         </View>
         <Text style={styles.title}>{property.title}</Text>
         <Text style={styles.address}>{property.address}</Text>
         <Text style={styles.meta}>
-          {property.district} • {property.rooms} комн. • {property.area} м² • {property.floor}/{property.totalFloors} этаж
+          {property.district} • {property.rooms} комн. • {property.area} м² • {property.floor}/{property.totalFloors} этаж • {property.renovation}
         </Text>
         <View style={styles.tags}>
           {property.tags.slice(0, 3).map((tag) => (

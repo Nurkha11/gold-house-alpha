@@ -6,9 +6,9 @@ import { formatPrice } from '@/components/BudgetSlider';
 import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
+import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { getPersonalRecommendations } from '@/data/aiTrainingStore';
 import { saveFinalRecommendationSignals } from '@/data/buyerProfileStore';
-import { colors, radius, shadows, spacing } from '@/constants/theme';
 
 export default function PersonalRecommendationsScreen() {
   const recommendations = getPersonalRecommendations();
@@ -32,12 +32,12 @@ export default function PersonalRecommendationsScreen() {
             <View style={styles.body}>
               <View style={styles.badges}>
                 <Badge label={`ТОП-${index + 1}`} />
-                <Badge label={`${score}% Match`} tone="green" />
+                <Badge label={`${score}% Match`} />
               </View>
               <Text style={styles.price}>{formatPrice(property.price)}</Text>
-              <Text style={styles.title}>{property.address}</Text>
+              <Text style={styles.title}>{property.title}</Text>
               <Text style={styles.meta}>
-                {property.district} · {property.rooms} комн. · {property.area} м² · {property.floor}/{property.totalFloors} этаж
+                {property.district} • {property.complexName} • {property.rooms} комн. • {property.area} м² • {property.floor}/{property.totalFloors} этаж
               </Text>
               <View style={styles.reasonBox}>
                 <Text style={styles.reasonTitle}>Почему AI рекомендует этот объект</Text>

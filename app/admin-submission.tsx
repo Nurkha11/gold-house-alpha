@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, spacing } from '@/constants/theme';
+import { getActiveBuyerProfile } from '@/data/buyerProfileStore';
 import { getSubmissionById, updateSubmissionStatus } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
@@ -17,10 +18,27 @@ const adminActions: Array<{ label: string; status: SubmissionStatus }> = [
   { label: 'Опубликовать', status: 'published' },
   { label: 'Отклонить', status: 'rejected' },
 ];
+const ADMIN_PHONES = ['+77021734499'];
+
+function normalizePhone(phone?: string) {
+  const digits = String(phone ?? '').replace(/\D/g, '');
+  return digits.startsWith('7') ? `+${digits}` : `+7${digits}`;
+}
 
 export default function AdminSubmissionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [submission, setSubmission] = useState(() => getSubmissionById(id));
+  const currentUser = getActiveBuyerProfile();
+  const adminAllowed = Boolean(currentUser && ADMIN_PHONES.includes(normalizePhone(currentUser.phone)));
+
+  if (!adminAllowed) {
+    return (
+      <Screen>
+        <PageHeader eyebrow="Gold House" title="Доступ запрещен" subtitle="Эта страница доступна только администраторам Gold House." />
+        <PrimaryButton title="Вернуться в главное меню" onPress={() => router.replace('/' as never)} />
+      </Screen>
+    );
+  }
 
   if (!submission) {
     return (

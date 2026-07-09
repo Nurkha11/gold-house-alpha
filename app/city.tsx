@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { PageHeader } from '@/components/PageHeader';
@@ -7,6 +7,8 @@ import { Screen } from '@/components/Screen';
 import { spacing } from '@/constants/theme';
 
 export default function CityScreen() {
+  const params = useLocalSearchParams();
+
   return (
     <Screen>
       <OnboardingProgress step={2} total={8} />
@@ -14,9 +16,9 @@ export default function CityScreen() {
       <View style={styles.options}>
         <QuestionCard
           title="Алматы"
-          subtitle="Пока Gold House Alpha работает с объектами Алматы."
+          subtitle="Сейчас Gold House работает с Алматы."
           selected
-          onPress={() => router.push({ pathname: '/district', params: { city: 'Алматы' } })}
+          onPress={() => router.push({ pathname: '/district', params: { ...params, city: 'Алматы' } } as never)}
         />
       </View>
     </Screen>

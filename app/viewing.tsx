@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, spacing } from '@/constants/theme';
+import { recordTrainingSignal } from '@/data/aiTrainingStore';
 import { properties } from '@/data/properties';
 
 const timeSlots = ['18:00', '18:30', '19:00', '19:30'];
@@ -50,7 +51,10 @@ export default function ViewingFlow() {
         <PrimaryButton
           title="Подтвердить просмотр"
           variant="success"
-          onPress={() => router.push({ pathname: '/confirmed', params: { id, time: selectedTime } })}
+          onPress={() => {
+            if (id) recordTrainingSignal(id, 'viewing_request');
+            router.push({ pathname: '/confirmed', params: { id, time: selectedTime } });
+          }}
         />
       </View>
     </Screen>

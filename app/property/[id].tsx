@@ -1,18 +1,17 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
-import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { getRatingCount, recordTrainingSignal } from '@/data/aiTrainingStore';
 import { Property, properties } from '@/data/properties';
 import { getBuyerProperties, getBuyerPropertyById } from '@/data/propertyStore';
 
-const ownerPhone = '+7 777 245 88 11';
-const viewingDates = ['РЎРµРіРѕРґРЅСЏ', 'Р—Р°РІС‚СЂР°', 'Р’ РІС‹С…РѕРґРЅС‹Рµ'];
+const fallbackOwnerPhone = '+7 777 245 88 11';
+const viewingDates = ['Сегодня', 'Завтра', 'В выходные'];
 const viewingTimes = ['12:00', '15:30', '18:30', '20:00'];
 
 function similarTo(property: Property) {
@@ -22,12 +21,22 @@ function similarTo(property: Property) {
       item,
       score:
         (item.district === property.district ? 3 : 0) +
-        (Math.abs(item.price - property.price) <= 10_000_000 ? 2 : 0) +
+        (item.complexName === property.complexName ? 3 : 0) +
+        (Math.abs(item.price - property.price) <= 3_000_000 ? 2 : 0) +
+        (Math.abs(item.area - property.area) <= 4 ? 2 : 0) +
         (item.rooms === property.rooms ? 2 : 0),
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
+    .slice(0, 6)
     .map(({ item }) => item);
+}
+
+function cleanText(value?: string) {
+  const text = String(value ?? '').trim();
+  if (!text || /test|тест|алгоритм|scoring|price\/area/i.test(text)) {
+    return 'Светлая квартира в Наурызбайском районе с понятными характеристиками и честным описанием. Подойдет для первого жилья, спокойной жизни или покупки под ремонт, если вы хотите настроить пространство под себя.';
+  }
+  return text;
 }
 
 export default function PropertyDetailsScreen() {
@@ -37,7 +46,7 @@ export default function PropertyDetailsScreen() {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [viewingVisible, setViewingVisible] = useState(false);
   const [viewingSent, setViewingSent] = useState(false);
-  const [selectedDate, setSelectedDate] = useState('Р—Р°РІС‚СЂР°');
+  const [selectedDate, setSelectedDate] = useState('Завтра');
   const [selectedTime, setSelectedTime] = useState('18:30');
   const openedAt = useRef(Date.now());
   const similar = useMemo(() => similarTo(property), [property]);
@@ -45,11 +54,10 @@ export default function PropertyDetailsScreen() {
 
   useEffect(() => {
     recordTrainingSignal(property.id, 'detail_view');
-    const timer = setTimeout(() => {
-      recordTrainingSignal(property.id, 'long_detail_view', Date.now() - openedAt.current);
-    }, 1800);
 
-    return () => clearTimeout(timer);
+    return () => {
+      recordTrainingSignal(property.id, 'long_detail_view', Date.now() - openedAt.current);
+    };
   }, [property.id]);
 
   const nextPhoto = () => setPhotoIndex((value) => (value + 1) % gallery.length);
@@ -62,7 +70,7 @@ export default function PropertyDetailsScreen() {
 
   function callOwner() {
     recordTrainingSignal(property.id, 'owner_call');
-    Linking.openURL(`tel:${(property.ownerPhone ?? ownerPhone).replace(/\s/g, '')}`);
+    Linking.openURL(`tel:${(property.ownerPhone ?? fallbackOwnerPhone).replace(/\s/g, '')}`);
   }
 
   function rateFromDetails(type: 'like' | 'dislike') {
@@ -79,169 +87,172 @@ export default function PropertyDetailsScreen() {
   }
 
   return (
-    <Screen>
+    <Screen scroll={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
       <View style={styles.galleryWrap}>
         <Image source={{ uri: activePhoto }} style={styles.hero} />
+        <View style={styles.heroOverlay} />
         <View style={styles.topControls}>
           <Pressable style={styles.iconButton} onPress={() => router.back()}>
-            <Text style={styles.iconText}>вЂ№</Text>
+            <Text style={styles.iconText}>‹</Text>
           </Pressable>
           <View style={styles.topRight}>
-            <Pressable style={styles.iconButton} onPress={() => undefined}>
-              <Text style={styles.iconText}>в™Ў</Text>
+            <Pressable style={styles.iconButton}>
+              <Text style={styles.iconText}>♡</Text>
             </Pressable>
-            <Pressable style={styles.iconButton} onPress={() => undefined}>
-              <Text style={styles.iconText}>в†—</Text>
+            <Pressable style={styles.iconButton}>
+              <Text style={styles.iconText}>↗</Text>
             </Pressable>
           </View>
         </View>
-        <View style={styles.photoCounter}>
-          <Text style={styles.photoCounterText}>{photoIndex + 1} / {gallery.length}</Text>
+        <View style={styles.heroBadges}>
+          <Badge label="Gold Verified" />
+          <View style={styles.photoCounter}>
+            <Text style={styles.photoCounterText}>{photoIndex + 1} / 24</Text>
+          </View>
         </View>
         <View style={styles.galleryNav}>
-          <PrimaryButton title="РќР°Р·Р°Рґ" variant="ghost" onPress={prevPhoto} style={styles.galleryButton} />
-          <PrimaryButton title="Р’РїРµСЂРµРґ" variant="ghost" onPress={nextPhoto} style={styles.galleryButton} />
+          <Pressable style={styles.galleryPill} onPress={prevPhoto}>
+            <Text style={styles.galleryPillText}>‹</Text>
+          </Pressable>
+          <Pressable style={styles.galleryPill} onPress={nextPhoto}>
+            <Text style={styles.galleryPillText}>›</Text>
+          </Pressable>
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>
-        {gallery.map((image, index) => (
-          <Pressable key={`${image}-${index}`} onPress={() => setPhotoIndex(index)}>
-            <Image source={{ uri: image }} style={[styles.thumb, photoIndex === index && styles.activeThumb]} />
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      <View style={styles.titleBlock}>
-        <View style={styles.badges}>
-          {property.verified ? <Badge label="Gold Verified" tone="green" /> : null}
-          <Badge label={`${property.matchPercent}% Match`} />
-          <Badge label="Trust Index 98 / 100" tone="neutral" />
-        </View>
-        <Text style={styles.title}>{property.title}</Text>
+      <View style={styles.mainInfo}>
         <Text style={styles.price}>{formatPrice(property.price)}</Text>
         <Text style={styles.address}>{property.city}, {property.district}</Text>
+        <Text style={styles.title}>{property.complexName}</Text>
         <Text style={styles.meta}>{property.address}</Text>
       </View>
 
-      <Section title="AI Summary">
-        <Text style={styles.description}>
-          Р­С‚Р° РєРІР°СЂС‚РёСЂР° С…РѕСЂРѕС€Рѕ СЃРѕРІРїР°РґР°РµС‚ СЃ РІС‹Р±СЂР°РЅРЅС‹Рј СЂР°Р№РѕРЅРѕРј, Р±СЋРґР¶РµС‚РѕРј Рё Р±Р°Р·РѕРІС‹РјРё РїСЂРµРґРїРѕС‡С‚РµРЅРёСЏРјРё РїРѕ СЌС‚Р°Р¶Сѓ. РћР±СЉРµРєС‚ РІС‹РіР»СЏРґРёС‚ РЅР°РґРµР¶РЅРѕ РґР»СЏ РїРµСЂРІРѕРіРѕ РїСЂРѕСЃРјРѕС‚СЂР°: РµСЃС‚СЊ С„РѕС‚Рѕ, РІРёРґРµРѕ, РїРѕРґС‚РІРµСЂР¶РґРµРЅРЅР°СЏ Р»РѕРєР°С†РёСЏ Рё РїРѕРЅСЏС‚РЅР°СЏ РёСЃС‚РѕСЂРёСЏ РїСЂРѕРІРµСЂРєРё.
-        </Text>
-      </Section>
+      <View style={styles.quickGrid}>
+        <QuickFact label="Комнаты" value={`${property.rooms}`} />
+        <QuickFact label="Площадь" value={`${property.area} м²`} />
+        <QuickFact label="Этаж" value={`${property.floor}/${property.totalFloors}`} />
+        <QuickFact label="Год" value={String(property.year)} />
+        <QuickFact label="Потолки" value={`${property.ceilingHeight} м`} />
+        <QuickFact label="Ремонт" value={property.renovation} />
+      </View>
 
-      <Section title="Р’РёРґРµРѕ">
+      <View style={styles.recommendCard}>
+        <View style={styles.blockTitleRow}>
+          <Text style={styles.blockTitle}>Почему мы рекомендуем эту квартиру?</Text>
+          <Text style={styles.infoIcon}>i</Text>
+        </View>
+        <Text style={styles.matchText}>
+          Подходит вам на <Text style={styles.matchPercent}>{property.matchPercent}%</Text>
+        </Text>
+        {['Подходит под бюджет', 'Подходит по этажу', 'Нравится такой ремонт', 'Похожа на квартиры, которые вы лайкнули'].map((item) => (
+          <View key={item} style={styles.checkRow}>
+            <Text style={styles.goldCheck}>✓</Text>
+            <Text style={styles.reason}>{item}</Text>
+          </View>
+        ))}
+        <Text style={styles.smallNote}>На основе ваших предпочтений и истории просмотров</Text>
+      </View>
+
+      <InfoBlock title="Индекс доверия" header="98 из 100" items={['Фото актуальны', 'Видео актуально', 'Собственник подтвержден', 'Геолокация подтверждена', 'Документы проверены']} />
+
+      <View style={styles.block}>
+        <Text style={styles.blockTitle}>Видео и фото</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.videoRow}>
-          {['РљРІР°СЂС‚РёСЂР°', 'Р”РІРѕСЂ', 'РџРѕРґСЉРµР·Рґ', 'РЎРѕР±СЃС‚РІРµРЅРЅРёРє'].map((label) => (
+          {['Квартира', 'Подъезд', 'Двор', 'Собственник'].map((label, index) => (
             <View key={label} style={styles.videoCard}>
-              <Text style={styles.play}>в–¶</Text>
+              <Text style={styles.play}>▶</Text>
               <Text style={styles.videoLabel}>{label}</Text>
+              <Text style={styles.videoDuration}>{property.videos[index]?.duration ?? '0:40'}</Text>
             </View>
           ))}
         </ScrollView>
-      </Section>
+      </View>
 
-      <Section title="РџР»СЋСЃС‹">
-        {['РџРѕРґС…РѕРґРёС‚ РїРѕРґ Р±СЋРґР¶РµС‚', 'РҐРѕСЂРѕС€РµРµ СЃРѕРІРїР°РґРµРЅРёРµ РїРѕ СЂР°Р№РѕРЅСѓ', 'Р¤РѕС‚Рѕ Рё РІРёРґРµРѕ Р°РєС‚СѓР°Р»СЊРЅС‹', 'Р”РѕРєСѓРјРµРЅС‚С‹ РІ РїСЂРѕРІРµСЂРєРµ Gold House'].map((item) => (
-          <Text key={item} style={styles.reason}>вЂў {item}</Text>
-        ))}
-      </Section>
+      <InfoBlock title="Цифровой паспорт" items={['Документы проверены', 'Геолокация подтверждена', 'Фото соответствуют', 'Видео актуально']} />
 
-      <Section title="РњРёРЅСѓСЃС‹">
-        {['РќСѓР¶РЅРѕ РїСЂРѕРІРµСЂРёС‚СЊ С€СѓРј РІ РІРµС‡РµСЂРЅРµРµ РІСЂРµРјСЏ', 'РџР°СЂРєРѕРІРєСѓ Р»СѓС‡С€Рµ РѕС†РµРЅРёС‚СЊ РЅР° РїСЂРѕСЃРјРѕС‚СЂРµ', 'Р¤РёРЅР°Р»СЊРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹ РїРѕРґС‚РІРµСЂРґРёС‚ РјРµРЅРµРґР¶РµСЂ'].map((item) => (
-          <Text key={item} style={styles.reason}>вЂў {item}</Text>
-        ))}
-      </Section>
-
-      <Section title="РџРѕР»РЅС‹Рµ С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё">
-        <View style={styles.specGrid}>
-          <Spec label="РљРѕРјРЅР°С‚С‹" value={`${property.rooms}`} />
-          <Spec label="РџР»РѕС‰Р°РґСЊ" value={`${property.area} РјВІ`} />
-          <Spec label="Р­С‚Р°Р¶" value={`${property.floor}/${property.totalFloors}`} />
-          <Spec label="Р“РѕРґ РїРѕСЃС‚СЂРѕР№РєРё" value={String(property.year)} />
-          <Spec label="РџРѕС‚РѕР»РєРё" value={`${property.ceilingHeight} Рј`} />
-          <Spec label="Р”РѕРІРµСЂРёРµ" value="98 / 100" />
-        </View>
-      </Section>
-
-      <Section title="РРЅРґРµРєСЃ РґРѕРІРµСЂРёСЏ">
-        <View style={styles.trustHeader}>
-          <Text style={styles.trustScore}>98 / 100</Text>
-          <Badge label="Р’С‹СЃРѕРєР°СЏ РЅР°РґРµР¶РЅРѕСЃС‚СЊ" tone="green" />
-        </View>
-        {['Р”РѕРєСѓРјРµРЅС‚С‹ РїСЂРѕРІРµСЂРµРЅС‹', 'Р“РµРѕР»РѕРєР°С†РёСЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅР°', 'Р¤РѕС‚Рѕ Р°РєС‚СѓР°Р»СЊРЅС‹', 'Р’РёРґРµРѕ Р°РєС‚СѓР°Р»СЊРЅРѕ', 'РЎРѕР±СЃС‚РІРµРЅРЅРёРє РїРѕРґС‚РІРµСЂР¶РґРµРЅ'].map((item) => (
-          <Text key={item} style={styles.reason}>вЂў {item}</Text>
-        ))}
-      </Section>
-
-      <Section title="РџРѕС‡РµРјСѓ РјС‹ СЂРµРєРѕРјРµРЅРґСѓРµРј РёРјРµРЅРЅРѕ СЌС‚Сѓ РєРІР°СЂС‚РёСЂСѓ?">
-        {[
-          'РџРѕРґС…РѕРґРёС‚ РїРѕРґ РІР°С€ Р±СЋРґР¶РµС‚',
-          'Р’С‹Р±СЂР°РЅРЅС‹Р№ СЂР°Р№РѕРЅ',
-          'РЎРѕРІРїР°РґР°РµС‚ РїРѕ РєРѕРјРЅР°С‚РЅРѕСЃС‚Рё',
-          'РџРѕРґС…РѕРґРёС‚ РїРѕ СЌС‚Р°Р¶Сѓ',
-          'Р¦РµРЅР° РЅРёР¶Рµ РїРѕС…РѕР¶РёС… РєРІР°СЂС‚РёСЂ',
-          'Р”Рѕ СЂР°Р±РѕС‚С‹ 15 РјРёРЅСѓС‚',
-          'Р’Р°Рј РЅСЂР°РІРёС‚СЃСЏ С‚Р°РєРѕР№ СЂРµРјРѕРЅС‚',
-        ].map((item) => (
-          <Text key={item} style={styles.reason}>вЂў {item}</Text>
-        ))}
-      </Section>
-
-      <Section title="РћРїРёСЃР°РЅРёРµ">
-        <Text style={styles.description}>{property.description}</Text>
+      <View style={styles.block}>
+        <Text style={styles.blockTitle}>Описание</Text>
+        <Text style={styles.description}>{cleanText(property.description)}</Text>
         <View style={styles.tags}>
-          {property.tags.map((tag) => (
+          {property.tags.slice(0, 5).map((tag) => (
             <Badge key={tag} label={tag} tone="neutral" />
           ))}
         </View>
-      </Section>
+      </View>
 
-      <Section title="РќР° РєР°СЂС‚Рµ">
+      <InfoBlock title="Плюсы" items={property.pros.slice(0, 5)} />
+      <InfoBlock title="Минусы" items={property.cons.slice(0, 5)} muted />
+
+      <View style={styles.block}>
+        <Text style={styles.blockTitle}>На карте</Text>
         <View style={styles.mapMock}>
           <View style={styles.pin} />
-          <Text style={styles.mapText}>РљР°СЂС‚Р° Р±СѓРґРµС‚ РїРѕРґРєР»СЋС‡РµРЅР° РїРѕР·Р¶Рµ</Text>
+          <Text style={styles.mapTitle}>{property.complexName}</Text>
+          <Text style={styles.mapText}>{property.locationText}</Text>
         </View>
-        <Text style={styles.description}>{property.address}</Text>
-        <Text style={styles.muted}>{property.locationText}</Text>
-      </Section>
-
-      <Section title="РџРѕС…РѕР¶РёРµ РєРІР°СЂС‚РёСЂС‹">
-        {similar.map((item) => (
-          <Pressable key={item.id} style={styles.similarCard} onPress={() => router.push({ pathname: '/property/[id]', params: { id: item.id } })}>
-            <Image source={{ uri: item.images[0] }} style={styles.similarImage} />
-            <View style={styles.similarBody}>
-              <Text style={styles.similarTitle}>{item.title}</Text>
-              <Text style={styles.muted}>{item.district} В· {item.rooms} РєРѕРјРЅ. В· {formatPrice(item.price)}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </Section>
-
-      <View style={styles.bottomActions}>
-        <PrimaryButton title="в†ђ Р’РµСЂРЅСѓС‚СЊСЃСЏ Рє РѕС†РµРЅРєР°Рј" variant="ghost" onPress={() => router.back()} style={styles.actionButton} />
-        <View style={styles.ratingActions}>
-          <PrimaryButton title="вќ¤пёЏ РќСЂР°РІРёС‚СЃСЏ" onPress={() => rateFromDetails('like')} style={styles.ratingButton} />
-          <PrimaryButton title="рџ‘Ћ РќРµ РЅСЂР°РІРёС‚СЃСЏ" variant="ghost" onPress={() => rateFromDetails('dislike')} style={styles.ratingButton} />
-        </View>
-        <PrimaryButton title="рџ“… Р—Р°РїРёСЃР°С‚СЊСЃСЏ РЅР° РїСЂРѕСЃРјРѕС‚СЂ" onPress={() => setViewingVisible(true)} style={styles.actionButton} />
-        <PrimaryButton title="рџ“ћ РџРѕР·РІРѕРЅРёС‚СЊ СЃРѕР±СЃС‚РІРµРЅРЅРёРєСѓ" variant="secondary" onPress={callOwner} style={styles.actionButton} />
+        <Pressable style={styles.mapButton} onPress={() => undefined}>
+          <Text style={styles.mapButtonText}>↗ Открыть в картах</Text>
+        </Pressable>
       </View>
-      <Text style={styles.phoneText}>РќРѕРјРµСЂ СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°: {property.ownerPhone ?? ownerPhone}</Text>
+
+      <View style={styles.block}>
+        <Text style={styles.blockTitle}>Похожие квартиры</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.similarRow}>
+          {similar.map((item) => (
+            <Pressable key={item.id} style={styles.similarCard} onPress={() => router.push({ pathname: '/property/[id]', params: { id: item.id } })}>
+              <Image source={{ uri: item.images[0] }} style={styles.similarImage} />
+              <View style={styles.similarBody}>
+                <View style={styles.similarTop}>
+                  <Text style={styles.similarPrice}>{formatPrice(item.price)}</Text>
+                  <Text style={styles.saveSmall}>♡</Text>
+                </View>
+                <Text style={styles.similarMeta}>{item.rooms} комн. • {item.area} м²</Text>
+                <Text style={styles.similarMeta}>{item.district} • {item.floor}/{item.totalFloors} этаж</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={styles.bottomSpacer} />
+      </ScrollView>
+      <View style={styles.bottomBar}>
+        <View style={styles.actionRow}>
+          <Pressable style={styles.saveButton} onPress={() => recordTrainingSignal(property.id, 'save')}>
+            <Text style={styles.saveButtonText}>♡ Сохранить</Text>
+          </Pressable>
+          <Pressable style={styles.callButton} onPress={callOwner}>
+            <Text style={styles.saveButtonText}>Позвонить</Text>
+          </Pressable>
+        </View>
+        <View style={styles.actionRow}>
+          <Pressable style={styles.likeButton} onPress={() => rateFromDetails('like')}>
+            <Text style={styles.likeButtonText}>Нравится</Text>
+          </Pressable>
+          <Pressable style={styles.dislikeButton} onPress={() => rateFromDetails('dislike')}>
+            <Text style={styles.dislikeButtonText}>Не нравится</Text>
+          </Pressable>
+        </View>
+        <Pressable style={styles.goldButton} onPress={() => setViewingVisible(true)}>
+          <Text style={styles.goldButtonText}>Хочу посмотреть</Text>
+          <Text style={styles.bottomHint}>Выбрать дату и время</Text>
+        </Pressable>
+      </View>
 
       <Modal transparent visible={viewingVisible} animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             {viewingSent ? (
               <>
-                <Text style={styles.modalTitle}>Р—Р°РїСЂРѕСЃ РЅР° РїСЂРѕСЃРјРѕС‚СЂ РѕС‚РїСЂР°РІР»РµРЅ СЃРѕР±СЃС‚РІРµРЅРЅРёРєСѓ.</Text>
-                <Text style={styles.modalText}>РњС‹ РїРµСЂРµРґР°Р»Рё РІС‹Р±СЂР°РЅРЅРѕРµ РІСЂРµРјСЏ: {selectedDate}, {selectedTime}. РЎРѕР±СЃС‚РІРµРЅРЅРёРє РёР»Рё РјРµРЅРµРґР¶РµСЂ СЃРІСЏР¶РµС‚СЃСЏ СЃ РІР°РјРё РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.</Text>
-                <PrimaryButton title="Р“РѕС‚РѕРІРѕ" onPress={() => setViewingVisible(false)} />
+                <Text style={styles.modalTitle}>Запрос на просмотр отправлен собственнику.</Text>
+                <Text style={styles.modalText}>Мы передали выбранное время: {selectedDate}, {selectedTime}. Собственник или менеджер свяжется с вами для подтверждения.</Text>
+                <PrimaryButton title="Готово" onPress={() => setViewingVisible(false)} />
               </>
             ) : (
               <>
-                <Text style={styles.modalTitle}>Р’С‹Р±РµСЂРёС‚Рµ РґР°С‚Сѓ Рё РІСЂРµРјСЏ</Text>
-                <Text style={styles.modalText}>РЎРѕР±СЃС‚РІРµРЅРЅРёРє РїРѕР»СѓС‡РёС‚ Р·Р°РїСЂРѕСЃ Рё РїРѕРґС‚РІРµСЂРґРёС‚ РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊ РїСЂРѕСЃРјРѕС‚СЂР°.</Text>
+                <Text style={styles.modalTitle}>Выберите дату и время</Text>
+                <Text style={styles.modalText}>Собственник получит запрос и подтвердит возможность просмотра.</Text>
                 <View style={styles.optionRow}>
                   {viewingDates.map((date) => (
                     <PrimaryButton key={date} title={date} variant={selectedDate === date ? 'primary' : 'ghost'} onPress={() => setSelectedDate(date)} style={styles.modalOption} />
@@ -252,7 +263,8 @@ export default function PropertyDetailsScreen() {
                     <PrimaryButton key={time} title={time} variant={selectedTime === time ? 'primary' : 'ghost'} onPress={() => setSelectedTime(time)} style={styles.modalOption} />
                   ))}
                 </View>
-                <PrimaryButton title="РџРѕРґС‚РІРµСЂРґРёС‚СЊ Р·Р°РїСЂРѕСЃ" onPress={confirmViewing} />
+                <PrimaryButton title="Подтвердить запрос" onPress={confirmViewing} />
+                <PrimaryButton title="Позвонить собственнику" variant="secondary" onPress={callOwner} />
               </>
             )}
           </View>
@@ -262,61 +274,104 @@ export default function PropertyDetailsScreen() {
   );
 }
 
-function Spec({ label, value }: { label: string; value: string }) {
+function QuickFact({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.spec}>
-      <Text style={styles.specLabel}>{label}</Text>
-      <Text style={styles.specValue}>{value}</Text>
+    <View style={styles.quickFact}>
+      <Text style={styles.quickLabel}>{label}</Text>
+      <Text style={styles.quickValue} numberOfLines={2}>{value}</Text>
+    </View>
+  );
+}
+
+function InfoBlock({ title, header, items, muted = false }: { title: string; header?: string; items: string[]; muted?: boolean }) {
+  return (
+    <View style={styles.block}>
+      <Text style={styles.blockTitle}>{title}</Text>
+      {header ? <Text style={styles.blockHeader}>{header}</Text> : null}
+      <View style={styles.itemList}>
+        {items.map((item) => (
+          <View key={item} style={styles.checkRow}>
+            <Text style={styles.goldCheck}>✓</Text>
+            <Text style={[styles.reason, muted && styles.mutedReason]}>{item}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  galleryWrap: { position: 'relative', marginBottom: spacing.md },
-  hero: { width: '100%', height: 390, borderRadius: radius.xl, backgroundColor: colors.surface },
-  topControls: { position: 'absolute', top: spacing.md, left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between' },
+  scrollContent: { paddingBottom: spacing.xl },
+  galleryWrap: { position: 'relative', marginHorizontal: -spacing.lg, marginTop: -spacing.lg, marginBottom: spacing.lg },
+  hero: { width: '100%', height: 430, backgroundColor: colors.surface },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(13,13,13,0.08)' },
+  topControls: { position: 'absolute', top: spacing.lg, left: spacing.lg, right: spacing.lg, flexDirection: 'row', justifyContent: 'space-between' },
   topRight: { flexDirection: 'row', gap: spacing.sm },
-  iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center' },
   iconText: { color: colors.text, fontSize: 24, fontWeight: '900' },
-  photoCounter: { position: 'absolute', right: spacing.md, bottom: spacing.md, borderRadius: radius.sm, backgroundColor: 'rgba(13,13,13,0.72)', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  heroBadges: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  photoCounter: { borderRadius: radius.sm, backgroundColor: 'rgba(13,13,13,0.72)', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   photoCounterText: { color: colors.background, fontWeight: '900' },
-  galleryNav: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, flexDirection: 'row', gap: spacing.sm },
-  galleryButton: { flex: 1, minHeight: 42 },
-  thumbs: { gap: spacing.sm, paddingBottom: spacing.lg },
-  thumb: { width: 74, height: 74, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 2, borderColor: 'transparent' },
-  activeThumb: { borderColor: colors.accent },
-  titleBlock: { gap: spacing.sm, marginBottom: spacing.lg },
-  badges: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
-  title: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: '900' },
-  price: { color: colors.text, fontSize: 34, fontWeight: '900' },
-  address: { color: colors.text, fontSize: 19, fontWeight: '800' },
-  meta: { color: colors.muted, fontSize: 15 },
-  specGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  spec: { width: '47%', gap: spacing.xs },
-  specLabel: { color: colors.muted, fontSize: 13 },
-  specValue: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  trustHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
-  trustScore: { color: colors.success, fontSize: 30, fontWeight: '900' },
+  galleryNav: { position: 'absolute', right: spacing.lg, top: 210, gap: spacing.sm },
+  galleryPill: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center' },
+  galleryPillText: { color: colors.text, fontSize: 24, fontWeight: '900' },
+  mainInfo: { gap: spacing.xs, marginBottom: spacing.lg },
+  price: { color: colors.text, fontSize: 38, lineHeight: 44, fontWeight: '900' },
+  address: { color: colors.muted, fontSize: 15, fontWeight: '800' },
+  title: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: '900' },
+  meta: { color: colors.muted, fontSize: 15, lineHeight: 22 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
+  quickFact: { width: '31%', minHeight: 78, borderRadius: radius.md, backgroundColor: colors.surface, padding: spacing.sm, justifyContent: 'space-between' },
+  quickLabel: { color: colors.muted, fontSize: 12, fontWeight: '800' },
+  quickValue: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  recommendCard: { borderRadius: radius.lg, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: spacing.md, marginBottom: spacing.lg, ...shadows.card },
+  matchText: { color: colors.text, fontSize: 22, lineHeight: 30, fontWeight: '900' },
+  matchPercent: { color: colors.accent, fontSize: 30 },
+  block: { borderRadius: radius.lg, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, padding: spacing.lg, gap: spacing.md, marginBottom: spacing.lg, ...shadows.card },
+  blockTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
+  blockTitle: { color: colors.text, fontSize: 21, fontWeight: '900' },
+  infoIcon: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.line, color: colors.muted, textAlign: 'center', lineHeight: 22, fontWeight: '900' },
+  blockHeader: { color: colors.text, fontSize: 38, fontWeight: '900' },
+  itemList: { gap: spacing.xs },
   reason: { color: colors.text, fontSize: 16, lineHeight: 24 },
+  mutedReason: { color: colors.muted },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  goldCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: colors.accent, color: colors.accentDark, textAlign: 'center', lineHeight: 20, fontSize: 13, fontWeight: '900' },
+  smallNote: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: spacing.xs },
   description: { color: colors.text, fontSize: 16, lineHeight: 25 },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   videoRow: { gap: spacing.md },
-  videoCard: { width: 132, height: 92, borderRadius: radius.md, backgroundColor: colors.black, padding: spacing.md, justifyContent: 'space-between' },
-  play: { color: colors.accentSoft, fontSize: 20, fontWeight: '900' },
+  videoCard: { width: 140, height: 112, borderRadius: radius.md, backgroundColor: colors.black, padding: spacing.md, justifyContent: 'space-between' },
+  play: { color: colors.accentSoft, fontSize: 22, fontWeight: '900' },
   videoLabel: { color: colors.background, fontWeight: '900' },
-  mapMock: { height: 160, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  pin: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accent, borderWidth: 5, borderColor: colors.accentSoft },
-  mapText: { color: colors.muted, fontWeight: '800' },
-  similarCard: { flexDirection: 'row', gap: spacing.md, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surface },
-  similarImage: { width: 86, height: 86, borderRadius: radius.md, backgroundColor: colors.line },
-  similarBody: { flex: 1, justifyContent: 'center', gap: spacing.xs },
-  similarTitle: { color: colors.text, fontSize: 15, fontWeight: '900' },
-  bottomActions: { gap: spacing.sm, marginTop: spacing.lg },
-  ratingActions: { flexDirection: 'row', gap: spacing.sm },
-  ratingButton: { flex: 1 },
-  actionButton: { width: '100%' },
-  phoneText: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: spacing.sm, textAlign: 'center' },
+  videoDuration: { color: colors.accentSoft, fontSize: 12, fontWeight: '800' },
+  mapMock: { minHeight: 185, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
+  pin: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.accent, borderWidth: 5, borderColor: colors.accentSoft },
+  mapTitle: { color: colors.text, fontSize: 18, fontWeight: '900' },
+  mapText: { color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  mapButton: { minHeight: 50, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  mapButtonText: { color: colors.accentDark, fontSize: 15, fontWeight: '900' },
+  similarRow: { gap: spacing.md },
+  similarCard: { width: 220, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden', borderWidth: 1, borderColor: colors.line },
+  similarImage: { width: '100%', height: 132, backgroundColor: colors.line },
+  similarBody: { padding: spacing.md, gap: spacing.xs },
+  similarTop: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
+  similarPrice: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '900' },
+  saveSmall: { color: colors.accentDark, fontSize: 20, fontWeight: '900' },
+  similarMeta: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  bottomSpacer: { height: 230 },
+  bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: 'rgba(255,255,255,0.97)', padding: spacing.sm, gap: spacing.sm, ...shadows.card },
+  actionRow: { flexDirection: 'row', gap: spacing.sm },
+  saveButton: { flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  callButton: { flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  saveButtonText: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  likeButton: { flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: colors.black, alignItems: 'center', justifyContent: 'center' },
+  likeButtonText: { color: colors.background, fontSize: 15, fontWeight: '900' },
+  dislikeButton: { flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  dislikeButtonText: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  goldButton: { minHeight: 58, borderRadius: radius.md, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  goldButtonText: { color: colors.background, fontSize: 16, fontWeight: '900' },
+  bottomHint: { color: colors.muted, fontSize: 12, textAlign: 'center', fontWeight: '800' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(13,13,13,0.42)', justifyContent: 'flex-end', padding: spacing.lg },
   modalCard: { backgroundColor: colors.background, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.lg, ...shadows.card },
   modalTitle: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: '900' },

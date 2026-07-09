@@ -7,14 +7,14 @@ import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
+import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { getRatedPropertyIds, getRatingCount, getTrainingStream, recordTrainingSignal, scorePropertyForTraining } from '@/data/aiTrainingStore';
 import { Property } from '@/data/properties';
-import { colors, radius, shadows, spacing } from '@/constants/theme';
 
 const minimumRatings = 10;
 
 function matchPercent(property: Property) {
-  return Math.max(78, Math.min(96, Math.round(scorePropertyForTraining(property) / 2)));
+  return Math.max(78, Math.min(98, Math.round(scorePropertyForTraining(property))));
 }
 
 export default function SwipeScreen() {
@@ -51,13 +51,21 @@ export default function SwipeScreen() {
         <Text style={styles.counterText}>{Math.min(ratingCount, minimumRatings)} / {minimumRatings} оценок</Text>
       </View>
 
-      <TrainingCard
-        property={current}
-        match={matchPercent(current)}
-        onLike={() => rate(current, 'like')}
-        onDislike={() => rate(current, 'dislike')}
-        onDetails={() => router.push({ pathname: '/property/[id]', params: { id: current.id, source: 'training' } })}
-      />
+      {current ? (
+        <TrainingCard
+          property={current}
+          match={matchPercent(current)}
+          onLike={() => rate(current, 'like')}
+          onDislike={() => rate(current, 'dislike')}
+          onDetails={() => router.push({ pathname: '/property/[id]', params: { id: current.id, source: 'training' } })}
+        />
+      ) : (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>По этим фильтрам нет квартир.</Text>
+          <Text style={styles.emptyText}>Попробуйте вернуться и выбрать другой бюджет или этаж.</Text>
+          <PrimaryButton title="Изменить фильтры" onPress={() => router.replace('/budget' as never)} />
+        </View>
+      )}
     </Screen>
   );
 }
@@ -80,17 +88,17 @@ function TrainingCard({
       <Image source={{ uri: property.images[0] }} style={styles.image} />
       <View style={styles.body}>
         <View style={styles.badges}>
-          <Badge label="Gold Verified" tone={property.verified ? 'green' : 'neutral'} />
+          <Badge label="Gold Verified" />
           <Badge label={`${match}% Match`} />
         </View>
         <Text style={styles.price}>{formatPrice(property.price)}</Text>
-        <Text style={styles.title}>{property.address}</Text>
+        <Text style={styles.title}>{property.title}</Text>
         <Text style={styles.meta}>
-          {property.district} · {property.rooms} комн. · {property.area} м² · {property.floor}/{property.totalFloors} этаж
+          {property.district} • {property.complexName} • {property.rooms} комн. • {property.area} м² • {property.floor}/{property.totalFloors} этаж
         </Text>
         <View style={styles.actions}>
-          <PrimaryButton title="❤️ Нравится" onPress={onLike} style={styles.actionButton} />
-          <PrimaryButton title="👎 Не нравится" variant="ghost" onPress={onDislike} style={styles.actionButton} />
+          <PrimaryButton title="Нравится" onPress={onLike} style={styles.actionButton} />
+          <PrimaryButton title="Не нравится" variant="ghost" onPress={onDislike} style={styles.actionButton} />
           <PrimaryButton title="Подробнее" variant="secondary" onPress={onDetails} style={styles.actionButton} />
         </View>
       </View>
@@ -156,5 +164,24 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     width: '100%',
+  },
+  empty: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadows.card,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  emptyText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
   },
 });

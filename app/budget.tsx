@@ -17,15 +17,21 @@ const budgetRanges = [
   { id: '100-plus', label: '100+ млн ₸', min: 100_000_000, max: 999_000_000 },
 ];
 
+function initialBudgetId(min?: string, max?: string) {
+  const budgetMin = Number(min);
+  const budgetMax = Number(max);
+  return budgetRanges.find((range) => range.min === budgetMin && range.max === budgetMax)?.id ?? 'under-30';
+}
+
 export default function BudgetScreen() {
-  const params = useLocalSearchParams<{ city?: string; district?: string }>();
-  const [selectedId, setSelectedId] = useState('30-45');
-  const selectedRange = budgetRanges.find((range) => range.id === selectedId) ?? budgetRanges[1];
+  const params = useLocalSearchParams<{ city?: string; district?: string; budgetMin?: string; budgetMax?: string }>();
+  const [selectedId, setSelectedId] = useState(initialBudgetId(params.budgetMin, params.budgetMax));
+  const selectedRange = budgetRanges.find((range) => range.id === selectedId) ?? budgetRanges[0];
 
   return (
     <Screen>
       <OnboardingProgress step={4} total={8} />
-      <PageHeader eyebrow="Бюджет" title="Какой у вас бюджет?" subtitle="Выберите комфортный диапазон. Мы уберем варианты, которые сильно выходят за рамки." />
+      <PageHeader eyebrow="Бюджет" title="Какой у вас бюджет?" subtitle="Нижняя граница бюджета мягкая: если квартира дешевле, но подходит по остальным критериям, мы тоже покажем ее." />
       <View style={styles.options}>
         {budgetRanges.map((range) => (
           <OptionButton key={range.id} label={range.label} selected={selectedId === range.id} onPress={() => setSelectedId(range.id)} />
@@ -38,14 +44,13 @@ export default function BudgetScreen() {
             router.push({
               pathname: '/rooms',
               params: {
-                city: params.city,
-                district: params.district,
+                ...params,
                 budgetRange: selectedRange.id,
                 budgetLabel: selectedRange.label,
                 budgetMin: String(selectedRange.min),
                 budgetMax: String(selectedRange.max),
               },
-            })
+            } as never)
           }
         />
       </View>

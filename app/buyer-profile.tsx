@@ -8,22 +8,39 @@ import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { saveBuyerProfile, startGuestBuyerSession } from '@/data/buyerProfileStore';
 
+const profileMessageDelayMs = 2200;
+
+function formatKazakhstanPhone(value: string) {
+  const rawDigits = value.replace(/\D/g, '');
+  const withoutCountryCode = rawDigits.startsWith('7') ? rawDigits.slice(1) : rawDigits;
+  const digits = withoutCountryCode.slice(0, 10);
+  const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 8), digits.slice(8, 10)].filter(Boolean);
+  return `+7${parts.length ? ` ${parts.join(' ')}` : ' '}`;
+}
+
 export default function BuyerProfileScreen() {
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState('+7 ');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  function handlePhoneChange(value: string) {
+    setPhone(formatKazakhstanPhone(value));
+  }
+
   function saveAndContinue() {
-    if (!name.trim() || !phone.trim()) {
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (!name.trim() || phoneDigits.length < 11) {
       setError('Введите имя и номер телефона или продолжите без сохранения.');
       return;
     }
 
     const result = saveBuyerProfile(name, phone);
     setError('');
-    setMessage(result.restored ? 'Мы нашли ваши прошлые предпочтения.' : 'Рекомендации будут сохранены для следующего входа.');
-    setTimeout(() => router.push('/city' as never), 450);
+    setMessage(result.message);
+    setTimeout(() => {
+      router.replace(result.restored ? ('/buyer-cabinet' as never) : ('/city' as never));
+    }, profileMessageDelayMs);
   }
 
   function continueAsGuest() {
@@ -36,7 +53,7 @@ export default function BuyerProfileScreen() {
       <PageHeader
         eyebrow="Gold House"
         title="Хотите сохранить свои рекомендации?"
-        subtitle="Оставьте имя и номер телефона, чтобы Gold House запомнил ваши лайки, просмотры и подборки. Так рекомендации станут точнее при следующем входе."
+        subtitle="Введите имя и номер телефона. Мы будем запоминать ваши предпочтения, чтобы при следующем входе рекомендации стали точнее."
       />
 
       <Section title="Запомнить мои рекомендации" soft>
@@ -46,13 +63,20 @@ export default function BuyerProfileScreen() {
             <TextInput value={name} onChangeText={setName} placeholder="Например, Нурхан" placeholderTextColor={colors.muted} style={styles.input} />
           </View>
           <View style={styles.field}>
-            <Text style={styles.label}>Номер телефона</Text>
-            <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+7 777 000 00 00" placeholderTextColor={colors.muted} style={styles.input} />
+            <Text style={styles.label}>Телефон</Text>
+            <TextInput
+              value={phone}
+              onChangeText={handlePhoneChange}
+              keyboardType="phone-pad"
+              placeholder="+7 777 000 00 00"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
           </View>
 
           {message ? (
             <View style={styles.notice}>
-              <Text style={styles.noticeMark}>✓</Text>
+              <Text style={styles.noticeMark}>•</Text>
               <Text style={styles.noticeText}>{message}</Text>
             </View>
           ) : null}
@@ -63,7 +87,7 @@ export default function BuyerProfileScreen() {
         </View>
       </Section>
 
-      <Text style={styles.helper}>Вы можете пользоваться приложением и без регистрации. Сохранение рекомендаций - это дополнительная возможность.</Text>
+      <Text style={styles.helper}>Регистрация не обязательна. Без номера история будет храниться только внутри текущей сессии.</Text>
     </Screen>
   );
 }

@@ -22,10 +22,10 @@ export default function AiLoadingScreen() {
   useEffect(() => {
     startTrainingSession({
       city: params.city ?? 'Алматы',
-      district: params.district,
-      rooms: params.rooms,
+      district: params.district ?? 'Наурызбайский',
+      rooms: params.rooms ?? '1',
       budgetMin: Number(params.budgetMin ?? 0),
-      budgetMax: Number(params.budgetMax ?? 45_000_000),
+      budgetMax: Number(params.budgetMax ?? 30_000_000),
       floorPreference: params.floorPreference ?? 'any',
     });
 
@@ -50,7 +50,7 @@ export default function AiLoadingScreen() {
         <PageHeader
           eyebrow="Обучение AI"
           title="Помогите AI лучше понять ваши предпочтения."
-          subtitle="Оцените несколько квартир. Чем больше оценок, тем точнее будут рекомендации."
+          subtitle="Оцените минимум 10 квартир из контрольного датасета. Чем больше действий, тем точнее будут рекомендации."
         />
         <PrimaryButton title="Оценить квартиры" onPress={() => router.replace({ pathname: '/swipe', params } as never)} />
       </View>
