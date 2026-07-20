@@ -70,7 +70,26 @@ function aiProgress(actionCount: number) {
 
 function buildAiInsights(events: BuyerActionEvent[]) {
   const positive = events.filter((event) => event.type === 'LIKE' || event.type === 'SAVE' || event.type === 'LONG_VIEW_DETAILS');
+  const meaningful = events.filter((event) =>
+    ['LIKE', 'SAVE', 'LONG_VIEW_DETAILS', 'VIEW_DETAILS', 'CALL_OWNER', 'SCHEDULE_VIEWING', 'DISLIKE'].includes(event.type),
+  );
   const snapshots = positive.map((event) => event.propertySnapshot).filter(Boolean) as BuyerPropertySnapshot[];
+  const weightedBudgetSamples = meaningful
+    .map((event) => {
+      const snapshot = event.propertySnapshot;
+      if (!snapshot) return null;
+      const weightMap: Record<string, number> = {
+        SCHEDULE_VIEWING: 5,
+        CALL_OWNER: 4,
+        LIKE: 3,
+        SAVE: 3,
+        LONG_VIEW_DETAILS: 2,
+        VIEW_DETAILS: 1,
+        DISLIKE: -2,
+      };
+      return { price: snapshot.price, weight: weightMap[event.type] ?? 0 };
+    })
+    .filter(Boolean) as { price: number; weight: number }[];
 
   if (snapshots.length < 3) {
     return ['Пока данных мало. Оцените больше квартир, чтобы AI точнее понял ваши предпочтения.'];
@@ -84,13 +103,23 @@ function buildAiInsights(events: BuyerActionEvent[]) {
   const areas = snapshots.map((snapshot) => snapshot.area).sort((a, b) => a - b);
   const minArea = areas[0];
   const maxArea = areas[areas.length - 1];
+  const budgetBuckets = new Map<number, number>();
+
+  weightedBudgetSamples.forEach((sample) => {
+    const bucket = Math.floor(sample.price / 10_000_000) * 10_000_000;
+    budgetBuckets.set(bucket, (budgetBuckets.get(bucket) ?? 0) + sample.weight);
+  });
+
+  const preferredBudget = meaningful.length >= 5 ? [...budgetBuckets.entries()].sort((a, b) => b[1] - a[1])[0] : null;
 
   return [
     rooms ? `Чаще выбираете: ${rooms}-комнатные квартиры.` : '',
     district ? `Любимый район: ${district}.` : '',
     repair ? `Предпочитаемый ремонт: ${repair}.` : '',
     floor ? `Предпочитаемые этажи: ${floor}.` : '',
-    `Средний бюджет: до ${formatPrice(averagePrice)}.`,
+    preferredBudget && preferredBudget[1] > 0
+      ? `Вы чаще рассматриваете квартиры стоимостью от ${Math.round(preferredBudget[0] / 1_000_000)} до ${Math.round((preferredBudget[0] + 10_000_000) / 1_000_000)} млн ₸.`
+      : `Средний бюджет: до ${formatPrice(averagePrice)}.`,
     `Любимая площадь: ${minArea}-${maxArea} м².`,
   ].filter(Boolean);
 }
@@ -167,15 +196,19 @@ export default function BuyerCabinetScreen() {
 
   function changeCriteria() {
     if (preferences) startTrainingSession(preferences);
+    const selectedDistricts = Array.isArray(preferences?.selectedDistricts)
+      ? preferences?.selectedDistricts.join(',')
+      : preferences?.selectedDistricts ?? preferences?.district;
     router.push({
       pathname: '/city',
       params: preferences
         ? {
             city: preferences.city,
             district: preferences.district,
+            selectedDistricts,
             rooms: preferences.rooms,
-            budgetMin: String(preferences.budgetMin),
-            budgetMax: String(preferences.budgetMax),
+            ...(preferences.budgetMin ? { budgetMin: String(preferences.budgetMin) } : {}),
+            ...(preferences.budgetMax ? { budgetMax: String(preferences.budgetMax) } : {}),
             floorPreference: preferences.floorPreference,
           }
         : {},

@@ -12,6 +12,7 @@ export default function AiLoadingScreen() {
   const params = useLocalSearchParams<{
     city?: string;
     district?: string;
+    selectedDistricts?: string;
     budgetMin?: string;
     budgetMax?: string;
     rooms?: string;
@@ -23,9 +24,10 @@ export default function AiLoadingScreen() {
     startTrainingSession({
       city: params.city ?? 'Алматы',
       district: params.district ?? 'Наурызбайский',
+      selectedDistricts: params.selectedDistricts ?? params.district ?? 'Наурызбайский',
       rooms: params.rooms ?? '1',
-      budgetMin: Number(params.budgetMin ?? 0),
-      budgetMax: Number(params.budgetMax ?? 30_000_000),
+      budgetMin: params.budgetMin ? Number(params.budgetMin) : undefined,
+      budgetMax: params.budgetMax ? Number(params.budgetMax) : undefined,
       floorPreference: params.floorPreference ?? 'any',
     });
 
@@ -38,7 +40,7 @@ export default function AiLoadingScreen() {
     animation.start();
 
     return () => animation.stop();
-  }, [params.budgetMax, params.budgetMin, params.city, params.district, params.floorPreference, params.rooms, pulse]);
+  }, [params.budgetMax, params.budgetMin, params.city, params.district, params.selectedDistricts, params.floorPreference, params.rooms, pulse]);
 
   return (
     <Screen scroll={false}>

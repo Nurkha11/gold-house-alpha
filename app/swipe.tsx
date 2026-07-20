@@ -18,7 +18,7 @@ function matchPercent(property: Property) {
 }
 
 export default function SwipeScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ selectedDistricts?: string; district?: string; rooms?: string }>();
   const [ratedIds, setRatedIds] = useState<string[]>(() => getRatedPropertyIds());
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
 
@@ -26,6 +26,14 @@ export default function SwipeScreen() {
   const currentIndex = Math.min(ratedIds.length, stream.length - 1);
   const current = stream[currentIndex];
   const remaining = Math.max(minimumRatings - ratingCount, 0);
+  const selectedDistricts = String(params.selectedDistricts ?? params.district ?? '')
+    .split(',')
+    .map((district) => district.trim())
+    .filter(Boolean);
+  const emptyText =
+    selectedDistricts.length === 1 && selectedDistricts[0] === 'Бостандыкский' && params.rooms === '2'
+      ? 'В Бостандыкском районе пока нет двухкомнатных квартир по выбранным критериям. Попробуйте выбрать другой район или изменить комнатность.'
+      : 'Попробуйте выбрать другой район, комнатность или предпочтение по этажу.';
 
   function rate(property: Property, type: 'like' | 'dislike') {
     recordTrainingSignal(property.id, type);
@@ -62,8 +70,8 @@ export default function SwipeScreen() {
       ) : (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>По этим фильтрам нет квартир.</Text>
-          <Text style={styles.emptyText}>Попробуйте вернуться и выбрать другой бюджет или этаж.</Text>
-          <PrimaryButton title="Изменить фильтры" onPress={() => router.replace('/budget' as never)} />
+          <Text style={styles.emptyText}>{emptyText}</Text>
+          <PrimaryButton title="Изменить фильтры" onPress={() => router.replace('/district' as never)} />
         </View>
       )}
     </Screen>

@@ -9,14 +9,19 @@ import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { getRatingCount, recordTrainingSignal } from '@/data/aiTrainingStore';
 import { Property, properties } from '@/data/properties';
 import { getBuyerProperties, getBuyerPropertyById } from '@/data/propertyStore';
+import { getSelectedDistricts } from '@/data/aiTrainingStore';
 
 const fallbackOwnerPhone = '+7 777 245 88 11';
 const viewingDates = ['Сегодня', 'Завтра', 'В выходные'];
 const viewingTimes = ['12:00', '15:30', '18:30', '20:00'];
 
 function similarTo(property: Property) {
+  const selectedDistricts = getSelectedDistricts();
+  const districtScope = selectedDistricts.includes(property.district) ? selectedDistricts : [property.district];
+
   return getBuyerProperties()
     .filter((item) => item.id !== property.id)
+    .filter((item) => districtScope.includes(item.district))
     .map((item) => ({
       item,
       score:
