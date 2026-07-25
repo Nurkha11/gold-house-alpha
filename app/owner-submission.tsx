@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { BackHandler, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { OwnerField } from '@/components/OwnerField';
 import { OwnerMediaUploader } from '@/components/OwnerMediaUploader';
+import { OwnerLocationPicker } from '@/components/OwnerLocationPicker';
 import { OwnerStatusBadge } from '@/components/OwnerStatusBadge';
 import { OwnerStepIndicator } from '@/components/OwnerStepIndicator';
 import { OptionButton } from '@/components/OptionButton';
@@ -13,9 +14,9 @@ import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { getCurrentOwner, saveSubmission } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
+import { createLocation } from '@/data/residentialComplexes';
 
 const totalSteps = 9;
-const districts = ['Бостандыкский', 'Алмалинский', 'Медеуский', 'Ауэзовский', 'Наурызбайский', 'Турксибский', 'Жетысуский', 'Алатауский'];
 const roomOptions = ['1', '2', '3', '4', '5+'];
 const yesNo = ['Да', 'Нет'];
 const documentOptions = ['Да', 'Нужно уточнить'];
@@ -23,6 +24,7 @@ const encumbranceOptions = ['Нет', 'Есть', 'Нужно уточнить']
 const repairOptions = ['Хороший ремонт', 'Средний ремонт', 'Требуется ремонт', 'Черновая отделка', 'Предчистовая отделка'];
 const remainsOptions = ['Полностью', 'Частично', 'Не остается'];
 const bathroomOptions = ['Совмещенный', 'Раздельный', '2 санузла'];
+const buildingMaterialOptions = ['Монолит', 'Кирпич', 'Панель', 'Монолит-кирпич-панель', 'Панель-кирпич', 'Другое'];
 const ownerVideoQuestions = [
   'Представьтесь.',
   'Почему продаете квартиру?',
@@ -48,6 +50,14 @@ function createInitialSubmission(ownerId: string): PropertySubmission {
       district: 'Бостандыкский',
       complexName: '',
       street: '',
+      location: createLocation({
+        fullAddress: 'Алматы, Бостандыкский район',
+        district: 'Бостандыкский',
+        source: 'manual',
+        districtSource: 'manual',
+      }),
+      residentialComplexId: undefined,
+      newResidentialComplex: null,
     },
     characteristics: {
       rooms: '2',
@@ -99,6 +109,19 @@ export default function OwnerSubmissionScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [submission, setSubmission] = useState<PropertySubmission>(() => createInitialSubmission(owner?.id ?? 'owner-local'));
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step <= 1) {
+        return false;
+      }
+
+      setStep((current) => Math.max(1, current - 1));
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [step]);
+
   const mainPhoto = useMemo(
     () => submission.media.find((file) => file.type === 'photo')?.uri ?? 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80',
     [submission.media],
@@ -106,6 +129,16 @@ export default function OwnerSubmissionScreen() {
 
   function updateAddress(key: keyof PropertySubmission['address'], value: string) {
     setSubmission((current) => ({ ...current, address: { ...current.address, [key]: value } }));
+  }
+
+  function updateAddressFromLocation(payload: PropertySubmission['address']) {
+    setSubmission((current) => ({
+      ...current,
+      address: {
+        ...current.address,
+        ...payload,
+      },
+    }));
   }
 
   function updateCharacteristics(key: keyof PropertySubmission['characteristics'], value: string) {
@@ -181,16 +214,17 @@ export default function OwnerSubmissionScreen() {
       />
 
       {step === 1 ? (
-        <Section title="Адрес">
-          <OwnerField label="Город" value={submission.address.city} onChangeText={(value) => updateAddress('city', value)} />
-          <Text style={styles.groupLabel}>Район</Text>
-          <View style={styles.options}>
-            {districts.map((district) => (
-              <OptionButton key={district} label={district} selected={submission.address.district === district} onPress={() => updateAddress('district', district)} />
-            ))}
-          </View>
-          <OwnerField label="ЖК / название дома" value={submission.address.complexName} onChangeText={(value) => updateAddress('complexName', value)} placeholder="Например, ЖК Central Park" />
-          <OwnerField label="Адрес" value={submission.address.street} onChangeText={(value) => updateAddress('street', value)} placeholder="Улица, дом, корпус" />
+        <Section title="Где находится квартира?">
+          <OwnerLocationPicker
+            city={submission.address.city}
+            district={submission.address.district}
+            complexName={submission.address.complexName}
+            street={submission.address.street}
+            location={submission.address.location}
+            complexId={submission.address.residentialComplexId}
+            newComplex={submission.address.newResidentialComplex}
+            onAddressChange={(payload) => updateAddressFromLocation(payload)}
+          />
         </Section>
       ) : null}
 
@@ -204,9 +238,9 @@ export default function OwnerSubmissionScreen() {
             <OwnerField label="Этаж" value={submission.characteristics.floor} onChangeText={(value) => updateCharacteristics('floor', value)} keyboardType="numeric" />
             <OwnerField label="Этажность дома" value={submission.characteristics.totalFloors} onChangeText={(value) => updateCharacteristics('totalFloors', value)} keyboardType="numeric" />
             <OwnerField label="Год постройки" value={submission.characteristics.year} onChangeText={(value) => updateCharacteristics('year', value)} keyboardType="numeric" />
-            <OwnerField label="Материал дома" value={submission.characteristics.buildingMaterial} onChangeText={(value) => updateCharacteristics('buildingMaterial', value)} />
             <OwnerField label="Высота потолков" value={submission.characteristics.ceilingHeight} onChangeText={(value) => updateCharacteristics('ceilingHeight', value)} keyboardType="decimal-pad" />
           </View>
+          {renderChoiceGroup('Материал дома', buildingMaterialOptions, submission.characteristics.buildingMaterial, (value) => updateCharacteristics('buildingMaterial', value))}
           {renderChoiceGroup('Санузел', bathroomOptions, submission.characteristics.bathroom, (value) => updateCharacteristics('bathroom', value))}
           {renderChoiceGroup('Балкон', yesNo, submission.characteristics.balcony, (value) => updateCharacteristics('balcony', value))}
           {renderChoiceGroup('Лифт', yesNo, submission.characteristics.elevator, (value) => updateCharacteristics('elevator', value))}
@@ -306,6 +340,12 @@ export default function OwnerSubmissionScreen() {
             <Text style={styles.helper}>Ремонт: {submission.condition.renovation}. {submission.condition.repairComment || 'Комментарий не указан.'}</Text>
             <Text style={styles.helper}>Мебель: {submission.condition.furniture} · Техника: {submission.condition.appliances} · {submission.condition.remains || 'Что остается не указано.'}</Text>
             <Text style={styles.helper}>Медиа: фото {submission.media.filter((file) => file.type === 'photo').length}, видео {submission.media.filter((file) => file.type === 'video').length}</Text>
+            <Text style={styles.helper}>
+              Локация: {submission.address.location?.latitude.toFixed(6) || '-'}, {submission.address.location?.longitude.toFixed(6) || '-'} · источник района: {submission.address.location?.districtSource || '-'}
+            </Text>
+            {submission.address.location?.locationWarnings?.length ? (
+              <Text style={styles.helper}>Предупреждения: {submission.address.location.locationWarnings.join(' · ')}</Text>
+            ) : null}
           </Section>
         </View>
       ) : null}
@@ -313,7 +353,7 @@ export default function OwnerSubmissionScreen() {
       <View style={styles.footer}>
         {step > 1 ? <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep((current) => current - 1)} /> : null}
         {step < totalSteps ? (
-          <PrimaryButton title="Далее" onPress={() => setStep((current) => current + 1)} />
+          <PrimaryButton title="Далее" disabled={!canGoNext(step, submission)} onPress={() => setStep((current) => current + 1)} />
         ) : (
           <>
             <PrimaryButton title="Назад" variant="ghost" onPress={() => setStep(8)} />
@@ -328,7 +368,7 @@ export default function OwnerSubmissionScreen() {
 
 function stepTitle(step: number) {
   const titles = [
-    'Адрес',
+    'Где находится квартира?',
     'Основные характеристики',
     'Цена и условия',
     'Ремонт и состояние',
@@ -339,6 +379,15 @@ function stepTitle(step: number) {
     'Предпросмотр',
   ];
   return titles[step - 1];
+}
+
+function canGoNext(step: number, submission: PropertySubmission) {
+  if (step !== 1) {
+    return true;
+  }
+
+  const location = submission.address.location;
+  return Boolean(location && Number.isFinite(location.latitude) && Number.isFinite(location.longitude) && location.locationConfirmed);
 }
 
 function buildDescription(submission: PropertySubmission) {

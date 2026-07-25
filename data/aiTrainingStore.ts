@@ -2,7 +2,25 @@ import { Property } from '@/data/properties';
 import { getActiveBuyerSignals, recordBuyerSignal, saveBuyerPreferences } from '@/data/buyerProfileStore';
 import { getBuyerProperties } from '@/data/propertyStore';
 
-export type FloorPreference = 'any' | 'notFirst' | 'notLast' | 'middle';
+export type FloorCategory = 'first' | 'middle' | 'last';
+export type FloorPreference =
+  | 'any'
+  | 'first'
+  | 'last'
+  | 'firstMiddle'
+  | 'firstLast'
+  | 'middleLast'
+  | 'notFirst'
+  | 'notLast'
+  | 'middle'
+  | 'first_only'
+  | 'middle_only'
+  | 'last_only'
+  | 'first_middle'
+  | 'first_last'
+  | 'middle_last'
+  | 'not_first'
+  | 'not_last';
 
 export type BuyerPreferences = {
   city: string;
@@ -11,7 +29,8 @@ export type BuyerPreferences = {
   rooms?: string;
   budgetMin?: number;
   budgetMax?: number;
-  floorPreference: FloorPreference;
+  selectedFloorCategories?: FloorCategory[] | string;
+  floorPreference?: FloorPreference | string;
 };
 
 export type TrainingSignalType = 'like' | 'dislike' | 'detail_view' | 'long_detail_view' | 'viewing_request' | 'owner_call' | 'save';
@@ -29,7 +48,7 @@ let preferences: BuyerPreferences = {
   district: 'Наурызбайский',
   selectedDistricts: ['Наурызбайский'],
   rooms: '1',
-  floorPreference: 'any',
+  selectedFloorCategories: ['first', 'middle', 'last'],
 };
 
 let signals: TrainingSignal[] = [];
@@ -48,6 +67,55 @@ export function districtMatches(property: Property) {
   return !selectedDistricts.length || selectedDistricts.includes(property.district);
 }
 
+export function normalizeFloorCategories(value?: string[] | string): FloorCategory[] {
+  const legacyMap: Record<string, FloorCategory[]> = {
+    any: ['first', 'middle', 'last'],
+    first: ['first'],
+    first_only: ['first'],
+    middle: ['middle'],
+    middle_only: ['middle'],
+    last: ['last'],
+    last_only: ['last'],
+    firstMiddle: ['first', 'middle'],
+    first_middle: ['first', 'middle'],
+    firstLast: ['first', 'last'],
+    first_last: ['first', 'last'],
+    middleLast: ['middle', 'last'],
+    middle_last: ['middle', 'last'],
+    notFirst: ['middle', 'last'],
+    not_first: ['middle', 'last'],
+    notLast: ['first', 'middle'],
+    not_last: ['first', 'middle'],
+  };
+
+  const raw = Array.isArray(value) ? value : String(value ?? '').split(',');
+  const selected = raw.flatMap((item) => legacyMap[item.trim()] ?? [item.trim() as FloorCategory]);
+  const unique = new Set<FloorCategory>();
+
+  selected.forEach((item) => {
+    if (item === 'first' || item === 'middle' || item === 'last') {
+      unique.add(item);
+    }
+  });
+
+  return [...unique];
+}
+
+function getSelectedFloorCategories() {
+  const selected = normalizeFloorCategories(preferences.selectedFloorCategories);
+  return selected.length ? selected : normalizeFloorCategories(preferences.floorPreference);
+}
+
+export function getPropertyFloorCategory(property: Property): FloorCategory {
+  if (property.floorCategory === 'first' || property.floorCategory === 'middle' || property.floorCategory === 'last') {
+    return property.floorCategory;
+  }
+
+  if (property.floor === 1) return 'first';
+  if (property.floor === property.totalFloors) return 'last';
+  return 'middle';
+}
+
 function hasBudgetPreference() {
   return typeof preferences.budgetMax === 'number' && preferences.budgetMax > 0;
 }
@@ -63,9 +131,16 @@ function createSignal(propertyId: string, type: TrainingSignalType, durationMs?:
 }
 
 export function startTrainingSession(nextPreferences: BuyerPreferences) {
-  preferences = nextPreferences;
+  const selectedFloorCategories = normalizeFloorCategories(nextPreferences.selectedFloorCategories);
+
+  preferences = {
+    ...nextPreferences,
+    selectedFloorCategories: selectedFloorCategories.length
+      ? selectedFloorCategories
+      : normalizeFloorCategories(nextPreferences.floorPreference),
+  };
   signals = getActiveBuyerSignals();
-  saveBuyerPreferences(nextPreferences);
+  saveBuyerPreferences(preferences);
 }
 
 export function getTrainingPreferences() {
@@ -100,11 +175,9 @@ function roomMatches(property: Property, rooms?: string) {
   return selectedRooms.some((room) => (room === '4+' ? property.rooms >= 4 : property.rooms === Number(room)));
 }
 
-function floorMatches(property: Property, preference: FloorPreference) {
-  if (preference === 'notFirst') return property.floor !== 1;
-  if (preference === 'notLast') return property.floor !== property.totalFloors;
-  if (preference === 'middle') return property.floor > 1 && property.floor < property.totalFloors;
-  return true;
+function floorMatches(property: Property, selectedFloorCategories: FloorCategory[] | string) {
+  const selected = normalizeFloorCategories(selectedFloorCategories);
+  return selected.length > 0 && selected.includes(getPropertyFloorCategory(property));
 }
 
 function hardFilterMatches(property: Property) {
@@ -112,7 +185,7 @@ function hardFilterMatches(property: Property) {
     property.city === preferences.city &&
     districtMatches(property) &&
     roomMatches(property, preferences.rooms) &&
-    floorMatches(property, preferences.floorPreference)
+    floorMatches(property, getSelectedFloorCategories())
   );
 }
 
@@ -236,7 +309,7 @@ export function scorePropertyForTraining(property: Property) {
   if (districtMatches(property)) score += 18;
   if (roomMatches(property, preferences.rooms)) score += 18;
   score += budgetScore(property);
-  if (floorMatches(property, preferences.floorPreference)) score += 14;
+  if (floorMatches(property, getSelectedFloorCategories())) score += 14;
   if (likedDistricts.has(property.district)) score += 6;
   if (likedComplexes.has(property.complexName)) score += 6;
   if (likedRenovations.has(propertyRenovation)) score += 12;
@@ -303,7 +376,7 @@ export function getPersonalRecommendations() {
         likedRenovations.has(propertyRenovation) ? `AI заметил интерес к формату: ${propertyRenovation}` : 'Ремонт учитывается как обучающий фактор',
         averageLikedArea ? `Вы предпочитаете квартиры площадью около ${averageLikedArea} м²` : 'Площадь учитывается как обучающий фактор',
         largeAreaLikes >= 2 ? 'Вам чаще нравятся квартиры с большей площадью' : affordableLikes >= 2 ? 'Вы чаще выбираете доступные квартиры до 20 млн ₸' : 'Цена и площадь учтены в Match Score',
-        floorMatches(property, preferences.floorPreference) ? 'Подходит под ваши предпочтения по этажу' : 'Ближайший вариант с учетом остальных сигналов',
+        floorMatches(property, getSelectedFloorCategories()) ? 'Подходит под ваши предпочтения по этажу' : 'Ближайший вариант с учетом остальных сигналов',
         roomMatches(property, preferences.rooms) ? 'Совпадает по количеству комнат' : 'Похожа по общему профилю поиска',
       ];
 

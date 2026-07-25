@@ -8,16 +8,19 @@ type PrimaryButtonProps = {
   variant?: 'primary' | 'secondary' | 'ghost' | 'success';
   icon?: ReactNode;
   style?: ViewStyle;
+  disabled?: boolean;
 };
 
-export function PrimaryButton({ title, onPress, variant = 'primary', icon, style }: PrimaryButtonProps) {
+export function PrimaryButton({ title, onPress, variant = 'primary', icon, style, disabled }: PrimaryButtonProps) {
   return (
     <Pressable
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         styles[variant],
-        pressed && styles.pressed,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
         style,
       ]}
     >
@@ -54,6 +57,9 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.82,
     transform: [{ scale: 0.99 }],
+  },
+  disabled: {
+    opacity: 0.42,
   },
   text: {
     color: colors.background,

@@ -8,7 +8,7 @@ import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, spacing } from '@/constants/theme';
 import { getActiveBuyerProfile } from '@/data/buyerProfileStore';
-import { getSubmissionById, updateSubmissionStatus } from '@/data/ownerStore';
+import { getSubmissionById, updateSubmissionLocationReview, updateSubmissionStatus } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
 const adminActions: Array<{ label: string; status: SubmissionStatus }> = [
@@ -58,6 +58,13 @@ export default function AdminSubmissionScreen() {
     }
   }
 
+  function reviewLocation(action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') {
+    const updated = updateSubmissionLocationReview(currentSubmission.id, action);
+    if (updated) {
+      setSubmission({ ...updated });
+    }
+  }
+
   return (
     <Screen>
       <PageHeader
@@ -84,12 +91,21 @@ export default function AdminSubmissionScreen() {
         </View>
       </Section>
 
-      <SubmissionDetails submission={currentSubmission} />
+      <SubmissionDetails submission={currentSubmission} onReviewLocation={reviewLocation} />
     </Screen>
   );
 }
 
-function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
+function SubmissionDetails({
+  submission,
+  onReviewLocation,
+}: {
+  submission: PropertySubmission;
+  onReviewLocation: (action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') => void;
+}) {
+  const location = submission.address.location;
+  const newComplex = submission.address.newResidentialComplex;
+
   return (
     <>
       <Section title="Адрес">
@@ -97,6 +113,31 @@ function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
         <Info label="Район" value={submission.address.district} />
         <Info label="ЖК / дом" value={submission.address.complexName || '-'} />
         <Info label="Адрес" value={submission.address.street || '-'} />
+      </Section>
+
+      <Section title="Проверка локации">
+        <View style={styles.grid}>
+          <Info label="Полный адрес" value={location?.fullAddress || 'Адрес не выбран через карту'} />
+          <Info label="Координаты" value={location ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}` : '-'} />
+          <Info label="Источник адреса" value={location?.source === 'yandex' ? 'Yandex' : 'Manual fallback'} />
+          <Info label="Источник района" value={location?.districtSource || '-'} />
+          <Info label="Дом подтвержден собственником" value={location?.locationConfirmed ? 'Да' : 'Нет'} />
+          <Info label="Публичная точность" value={location?.publicLocationPrecision === 'approximate' ? 'примерная для покупателя' : '-'} />
+          <Info label="Выбранный ЖК ID" value={submission.address.residentialComplexId || '-'} />
+          <Info label="Новый ЖК" value={newComplex ? `${newComplex.name} · ${newComplex.status}` : '-'} />
+          <Info label="Похожие ЖК" value={newComplex?.duplicateComplexIds.length ? newComplex.duplicateComplexIds.join(', ') : '-'} />
+          <Info label="Предупреждения" value={location?.locationWarnings?.length ? location.locationWarnings.join('\n') : 'Нет'} />
+        </View>
+        <View style={styles.actions}>
+          <PrimaryButton title="Подтвердить локацию" variant="secondary" onPress={() => onReviewLocation('confirm_location')} />
+          <PrimaryButton title="Ручная проверка адреса" variant="ghost" onPress={() => onReviewLocation('request_manual_check')} />
+          {newComplex ? (
+            <>
+              <PrimaryButton title="Одобрить новый ЖК" variant="secondary" onPress={() => onReviewLocation('approve_complex')} />
+              <PrimaryButton title="Объединить с существующим ЖК" variant="ghost" onPress={() => onReviewLocation('merge_complex')} />
+            </>
+          ) : null}
+        </View>
       </Section>
 
       <Section title="Характеристики">

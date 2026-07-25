@@ -1,3 +1,5 @@
+import { PropertyLocation, ResidentialComplexSuggestion } from '@/data/locationTypes';
+
 export type SubmissionStatus =
   | 'draft'
   | 'submitted'
@@ -34,6 +36,9 @@ export type PropertySubmission = {
     district: string;
     complexName: string;
     street: string;
+    location?: PropertyLocation;
+    residentialComplexId?: string;
+    newResidentialComplex?: ResidentialComplexSuggestion | null;
   };
   characteristics: {
     rooms: string;

@@ -209,6 +209,9 @@ export default function BuyerCabinetScreen() {
             rooms: preferences.rooms,
             ...(preferences.budgetMin ? { budgetMin: String(preferences.budgetMin) } : {}),
             ...(preferences.budgetMax ? { budgetMax: String(preferences.budgetMax) } : {}),
+            selectedFloorCategories: Array.isArray(preferences.selectedFloorCategories)
+              ? preferences.selectedFloorCategories.join(',')
+              : preferences.selectedFloorCategories,
             floorPreference: preferences.floorPreference,
           }
         : {},

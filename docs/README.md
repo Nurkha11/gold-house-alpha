@@ -1,0 +1,28 @@
+# Gold House: документация проекта
+
+Актуально на 25 июля 2026 года. Документы основаны на фактическом коде проекта.
+
+- [Технический паспорт](GOLD_HOUSE_TECHNICAL_PASSPORT.md)
+- [Обзор продукта](PROJECT_OVERVIEW.md)
+- [Технологический стек](TECH_STACK.md)
+- [Архитектура](ARCHITECTURE.md)
+- [Экраны и маршруты](SCREENS.md)
+- [Компоненты](COMPONENTS.md)
+- [Модель данных](DATA_MODEL.md)
+- [Рекомендательная система](RECOMMENDATION_ENGINE.md)
+- [Yandex Maps](YANDEX_MAPS.md)
+- [Кабинеты собственника и администратора](OWNER_ADMIN.md)
+- [Аутентификация и роли](AUTH_ROLES_ARCHITECTURE.md)
+- [Матрица разрешений](PERMISSION_MATRIX.md)
+- [Backend-модель данных](BACKEND_DATA_MODEL.md)
+- [API-контракты](API_CONTRACTS.md)
+- [Workflow статусов объекта](PROPERTY_STATUS_WORKFLOW.md)
+- [Workflow записи на просмотр](VIEWING_REQUEST_WORKFLOW.md)
+- [Безопасность персональных данных](PERSONAL_DATA_SECURITY.md)
+- [План security-тестов](SECURITY_TEST_PLAN.md)
+- [Варианты backend](BACKEND_OPTIONS.md)
+- [План миграции и отката](BACKEND_MIGRATION_PLAN.md)
+- [Запуск и проверки](RUNBOOK.md)
+- [Известные проблемы](KNOWN_ISSUES.md)
+- [Текущий roadmap](ROADMAP_CURRENT.md)
+- [Архитектурные решения](DECISIONS.md)

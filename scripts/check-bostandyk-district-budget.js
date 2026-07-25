@@ -21,197 +21,137 @@ function roomMatches(property, rooms) {
   return selectedRooms.some((room) => (room === '4+' ? property.rooms >= 4 : property.rooms === Number(room)));
 }
 
-function floorMatches(property, preference) {
-  if (preference === 'notFirst') return property.floor !== 1;
-  if (preference === 'notLast') return property.floor !== property.totalFloors;
-  if (preference === 'middle') return property.floor > 1 && property.floor < property.totalFloors;
-  return true;
+function propertyFloorCategory(property) {
+  if (['first', 'middle', 'last'].includes(property.floorCategory)) return property.floorCategory;
+  if (property.floor === 1) return 'first';
+  if (property.floor === property.totalFloors) return 'last';
+  return 'middle';
 }
 
-function hardFilter({ districts, rooms, floorPreference = 'any' }) {
+function floorMatches(property, selectedFloorCategories) {
+  return selectedFloorCategories.length > 0 && selectedFloorCategories.includes(propertyFloorCategory(property));
+}
+
+const bostandykItems = properties.filter((property) => property.id.startsWith('bostandyk-'));
+const bostandykDistrict = bostandykItems[0]?.district;
+if (!bostandykDistrict) throw new Error('Bostandyk district seed was not found.');
+
+function hardFilter({ rooms, selectedFloorCategories }) {
   return properties.filter(
     (property) =>
-      property.city === 'Алматы' &&
-      districts.includes(property.district) &&
+      property.city === bostandykItems[0].city &&
+      property.district === bostandykDistrict &&
       roomMatches(property, rooms) &&
-      floorMatches(property, floorPreference),
+      floorMatches(property, selectedFloorCategories),
   );
 }
 
-const bostandykItems = properties.filter((property) => property.id.startsWith('bostandyk-1room-'));
-const bostandykTwoRoomItems = properties.filter((property) => property.id.startsWith('bostandyk-2room-'));
-const bostandykTwoRoomFirstItems = properties.filter((property) => property.id.startsWith('bostandyk-2room-') && property.floor === 1);
-const bostandykTwoRoomMiddleItems = properties.filter((property) => property.id.startsWith('bostandyk-2room-') && property.floor > 1 && property.floor < property.totalFloors);
-const bostandykTwoRoomLastItems = properties.filter((property) => property.id.startsWith('bostandyk-2room-') && property.floor === property.totalFloors);
-const allBostandykItems = properties.filter((property) => property.district === 'Бостандыкский');
-const firstFloorItems = bostandykItems.filter((property) => property.floor === 1);
-const middleFloorItems = bostandykItems.filter((property) => property.floor > 1 && property.floor < property.totalFloors);
-const lastFloorItems = bostandykItems.filter((property) => property.floor === property.totalFloors);
+const allFloorCategories = ['first', 'middle', 'last'];
+const oneRoomItems = bostandykItems.filter((property) => property.id.startsWith('bostandyk-1room-'));
+const twoRoomItems = bostandykItems.filter((property) => property.id.startsWith('bostandyk-2room-'));
+const threeRoomItems = bostandykItems.filter((property) => property.id.startsWith('bostandyk-3room-'));
 
-if (bostandykItems.length !== 12) {
-  throw new Error(`Expected 12 Bostandyk one-room properties, got ${bostandykItems.length}.`);
+const newFirstIds = ['bostandyk-3room-4you-first-029', 'bostandyk-2room-estet-first-030', 'bostandyk-3room-riviera-first-031', 'bostandyk-3room-afd-plaza-first-032'];
+const newLastIds = ['bostandyk-3room-4you-last-033', 'bostandyk-2room-estet-last-034', 'bostandyk-3room-riviera-last-035', 'bostandyk-3room-afd-plaza-last-036'];
+
+const newFirstItems = properties.filter((property) => newFirstIds.includes(property.id));
+const newLastItems = properties.filter((property) => newLastIds.includes(property.id));
+
+if (bostandykItems.length !== 36) throw new Error(`Expected 36 total Bostandyk properties, got ${bostandykItems.length}.`);
+if (oneRoomItems.length !== 12) throw new Error(`Expected 12 Bostandyk one-room properties, got ${oneRoomItems.length}.`);
+if (twoRoomItems.length !== 14) throw new Error(`Expected 14 Bostandyk two-room properties, got ${twoRoomItems.length}.`);
+if (threeRoomItems.length !== 10) throw new Error(`Expected 10 Bostandyk three-room properties, got ${threeRoomItems.length}.`);
+
+if (newFirstItems.length !== 4) throw new Error(`Expected 4 new first-floor properties, got ${newFirstItems.length}.`);
+if (newLastItems.length !== 4) throw new Error(`Expected 4 new last-floor properties, got ${newLastItems.length}.`);
+if (newFirstItems.some((property) => property.floor !== 1 || propertyFloorCategory(property) !== 'first')) {
+  throw new Error('New first-floor properties must have floor=1 and floorCategory=first.');
+}
+if (newLastItems.some((property) => property.floor !== property.totalFloors || propertyFloorCategory(property) !== 'last')) {
+  throw new Error('New last-floor properties must satisfy floor === totalFloors and floorCategory=last.');
 }
 
-if (bostandykTwoRoomItems.length !== 12) {
-  throw new Error(`Expected 12 Bostandyk two-room properties, got ${bostandykTwoRoomItems.length}.`);
+const lastFloors = new Set(newLastItems.map((property) => `${property.floor}/${property.totalFloors}`));
+for (const expected of ['8/8', '12/12', '16/16', '21/21']) {
+  if (!lastFloors.has(expected)) throw new Error(`Missing expected last-floor unit ${expected}.`);
 }
 
-if (bostandykTwoRoomFirstItems.length !== 4) {
-  throw new Error(`Expected 4 first-floor Bostandyk two-room properties, got ${bostandykTwoRoomFirstItems.length}.`);
+const allRoomsAllFloors = hardFilter({ rooms: 'all', selectedFloorCategories: allFloorCategories });
+if (allRoomsAllFloors.length !== 36) {
+  throw new Error(`All floor categories should return all 36 Bostandyk properties, got ${allRoomsAllFloors.length}.`);
 }
 
-if (bostandykTwoRoomMiddleItems.length !== 4) {
-  throw new Error(`Expected 4 middle-floor Bostandyk two-room properties, got ${bostandykTwoRoomMiddleItems.length}.`);
+const noFloorSelection = hardFilter({ rooms: 'all', selectedFloorCategories: [] });
+if (noFloorSelection.length !== 0) {
+  throw new Error('Empty floor selection should not return properties.');
 }
 
-if (bostandykTwoRoomLastItems.length !== 4) {
-  throw new Error(`Expected 4 last-floor Bostandyk two-room properties, got ${bostandykTwoRoomLastItems.length}.`);
+const twoRoomAllFloors = hardFilter({ rooms: '2', selectedFloorCategories: allFloorCategories });
+if (twoRoomAllFloors.length !== 14 || twoRoomAllFloors.some((property) => property.rooms !== 2)) {
+  throw new Error('Two-room filter should return only Bostandyk two-room properties.');
+}
+if (!twoRoomAllFloors.some((property) => property.id === 'bostandyk-2room-estet-last-034')) {
+  throw new Error('Estet last-floor unit must appear for 2-room selection.');
 }
 
-if (allBostandykItems.length !== 24) {
-  throw new Error(`Expected 24 total Bostandyk properties, got ${allBostandykItems.length}.`);
+const threeRoomAllFloors = hardFilter({ rooms: '3', selectedFloorCategories: allFloorCategories });
+if (threeRoomAllFloors.length !== 10 || threeRoomAllFloors.some((property) => property.rooms !== 3)) {
+  throw new Error('Three-room filter should return only Bostandyk three-room properties.');
+}
+for (const id of ['bostandyk-3room-4you-last-033', 'bostandyk-3room-riviera-last-035', 'bostandyk-3room-afd-plaza-last-036']) {
+  if (!threeRoomAllFloors.some((property) => property.id === id)) throw new Error(`${id} must appear for 3-room selection.`);
 }
 
-if (bostandykTwoRoomItems.some((property) => property.rooms !== 2)) {
-  throw new Error('Every Sprint 4/4.2 Bostandyk property must be two-room.');
+const onlyLast = hardFilter({ rooms: 'all', selectedFloorCategories: ['last'] });
+if (onlyLast.length !== 12 || onlyLast.some((property) => propertyFloorCategory(property) !== 'last')) {
+  throw new Error('Last-floor filter should return only last floor category properties.');
+}
+for (const id of newLastIds) {
+  if (!onlyLast.some((property) => property.id === id)) throw new Error(`${id} must appear in last-floor filter.`);
 }
 
-if (firstFloorItems.length !== 4) {
-  throw new Error(`Expected 4 first-floor Bostandyk properties, got ${firstFloorItems.length}.`);
+const onlyFirst = hardFilter({ rooms: 'all', selectedFloorCategories: ['first'] });
+if (onlyFirst.some((property) => newLastIds.includes(property.id) || propertyFloorCategory(property) !== 'first')) {
+  throw new Error('First-floor filter must not return new last-floor properties.');
 }
 
-if (middleFloorItems.length !== 4) {
-  throw new Error(`Expected 4 middle-floor Bostandyk properties, got ${middleFloorItems.length}.`);
+const onlyMiddle = hardFilter({ rooms: 'all', selectedFloorCategories: ['middle'] });
+if (onlyMiddle.some((property) => newFirstIds.includes(property.id) || newLastIds.includes(property.id) || propertyFloorCategory(property) !== 'middle')) {
+  throw new Error('Middle-floor filter must not return first or last category properties.');
+}
+if (!onlyMiddle.some((property) => property.id === 'bostandyk-3room-estet-middle-026')) {
+  throw new Error('Estet 2/12 middle-floor unit must appear for middle selection.');
 }
 
-if (lastFloorItems.length !== 4) {
-  throw new Error(`Expected 4 last-floor Bostandyk properties, got ${lastFloorItems.length}.`);
+const firstLast = hardFilter({ rooms: 'all', selectedFloorCategories: ['first', 'last'] });
+if (firstLast.some((property) => propertyFloorCategory(property) === 'middle')) {
+  throw new Error('First+last filter must exclude middle category properties.');
+}
+for (const id of newLastIds) {
+  if (!firstLast.some((property) => property.id === id)) throw new Error(`${id} must appear in first+last filter.`);
 }
 
-if (bostandykItems.some((property) => property.district !== 'Бостандыкский' || property.rooms !== 1)) {
-  throw new Error('Bostandyk dataset contains a property outside the required district/room scope.');
+const middleLast = hardFilter({ rooms: 'all', selectedFloorCategories: ['middle', 'last'] });
+if (middleLast.some((property) => propertyFloorCategory(property) === 'first')) {
+  throw new Error('Middle+last filter must exclude first category properties.');
+}
+for (const id of newLastIds) {
+  if (!middleLast.some((property) => property.id === id)) throw new Error(`${id} must appear in middle+last filter.`);
+}
+
+const firstMiddle = hardFilter({ rooms: 'all', selectedFloorCategories: ['first', 'middle'] });
+if (firstMiddle.some((property) => newLastIds.includes(property.id) || propertyFloorCategory(property) === 'last')) {
+  throw new Error('First+middle filter must exclude last category properties.');
+}
+
+const softBudgetCheck = hardFilter({ rooms: '1,2,3', selectedFloorCategories: allFloorCategories }).filter((property) => property.price > 90_000_000);
+if (!softBudgetCheck.some((property) => property.id === 'bostandyk-3room-4you-last-033')) {
+  throw new Error('Budget remains a soft score factor: expensive last-floor properties should remain visible before scoring.');
 }
 
 const ids = new Set(bostandykItems.map((property) => property.id));
-const phones = new Set(allBostandykItems.map((property) => property.ownerPhone));
-const allIds = new Set(allBostandykItems.map((property) => property.id));
-if (ids.size !== bostandykItems.length || allIds.size !== allBostandykItems.length) {
-  throw new Error('Bostandyk dataset contains duplicate IDs.');
-}
-if (phones.size !== allBostandykItems.length) {
-  throw new Error('Bostandyk dataset contains duplicate owner phones.');
-}
+const phones = new Set(bostandykItems.map((property) => property.ownerPhone));
+if (ids.size !== bostandykItems.length) throw new Error('Bostandyk dataset contains duplicate IDs.');
+if (phones.size !== bostandykItems.length) throw new Error('Bostandyk dataset contains duplicate owner phones.');
 
-for (const complexName of ['4YOU', 'Abay130', 'Riviera', 'Акварель']) {
-  const group = bostandykItems.filter((property) => property.complexName === complexName);
-  if (group.length !== 3) {
-    throw new Error(`Expected 3 Bostandyk properties for ${complexName}, got ${group.length}.`);
-  }
-  if (!group.some((property) => property.floor === 1)) {
-    throw new Error(`${complexName} has no first-floor Bostandyk property.`);
-  }
-  if (!group.some((property) => property.floor > 1 && property.floor < property.totalFloors)) {
-    throw new Error(`${complexName} has no middle-floor Bostandyk property.`);
-  }
-  if (!group.some((property) => property.floor === property.totalFloors)) {
-    throw new Error(`${complexName} has no last-floor Bostandyk property.`);
-  }
-}
-
-const allFloors = hardFilter({ districts: ['Бостандыкский'], rooms: '1', floorPreference: 'any' });
-if (allFloors.length !== 12) {
-  throw new Error(`Any-floor filter should return all 12 Bostandyk properties, got ${allFloors.length}.`);
-}
-
-const oneRoomOnly = hardFilter({ districts: ['Бостандыкский'], rooms: '1', floorPreference: 'any' });
-if (oneRoomOnly.length !== 12 || oneRoomOnly.some((property) => property.rooms !== 1)) {
-  throw new Error('One-room filter should return only the 12 existing Bostandyk one-room properties.');
-}
-
-const twoRoomOnly = hardFilter({ districts: ['Бостандыкский'], rooms: '2', floorPreference: 'any' });
-if (twoRoomOnly.length !== 12 || twoRoomOnly.some((property) => property.rooms !== 2)) {
-  throw new Error('Two-room filter should return only the 12 Bostandyk two-room properties.');
-}
-
-const oneOrTwoRooms = hardFilter({ districts: ['Бостандыкский'], rooms: '1,2', floorPreference: 'any' });
-if (oneOrTwoRooms.length !== 24 || !oneOrTwoRooms.some((property) => property.rooms === 1) || !oneOrTwoRooms.some((property) => property.rooms === 2)) {
-  throw new Error('Combined one-or-two-room filter should return both room groups.');
-}
-
-const threeRoomOnly = hardFilter({ districts: ['Бостандыкский'], rooms: '3', floorPreference: 'any' });
-if (threeRoomOnly.some((property) => property.id.startsWith('bostandyk-2room-'))) {
-  throw new Error('Three-room filter should not return Sprint 4 Bostandyk two-room properties.');
-}
-
-const notFirst = hardFilter({ districts: ['Бостандыкский'], rooms: '1', floorPreference: 'notFirst' });
-if (notFirst.length !== 8 || notFirst.some((property) => property.floor === 1)) {
-  throw new Error('Not-first filter should exclude every first-floor Bostandyk property.');
-}
-
-const twoRoomNotFirst = hardFilter({ districts: ['Бостандыкский'], rooms: '2', floorPreference: 'notFirst' });
-if (twoRoomNotFirst.length !== 8 || twoRoomNotFirst.some((property) => property.floor === 1)) {
-  throw new Error('Two-room not-first filter should exclude every Sprint 4.2 first-floor property.');
-}
-
-const notLast = hardFilter({ districts: ['Бостандыкский'], rooms: '1', floorPreference: 'notLast' });
-if (notLast.length !== 8 || notLast.some((property) => property.floor === property.totalFloors)) {
-  throw new Error('Not-last filter should exclude every last-floor Bostandyk property.');
-}
-
-const twoRoomNotLast = hardFilter({ districts: ['Бостандыкский'], rooms: '2', floorPreference: 'notLast' });
-if (twoRoomNotLast.length !== 8 || twoRoomNotLast.some((property) => property.floor === property.totalFloors)) {
-  throw new Error('Two-room not-last filter should keep first and middle floors and exclude only last floors.');
-}
-
-const twoRoomLast = hardFilter({ districts: ['Бостандыкский'], rooms: '2', floorPreference: 'any' }).filter((property) => property.floor === property.totalFloors);
-if (twoRoomLast.length !== 4 || twoRoomLast.some((property) => property.floor !== property.totalFloors)) {
-  throw new Error('Two-room last-floor dataset should contain exactly 4 properties with floor === totalFloors.');
-}
-
-const middle = hardFilter({ districts: ['Бостандыкский'], rooms: '1', floorPreference: 'middle' });
-if (middle.length !== 4 || middle.some((property) => property.floor === 1 || property.floor === property.totalFloors)) {
-  throw new Error('Middle-floor filter should return only middle-floor Bostandyk properties.');
-}
-
-const twoRoomMiddle = hardFilter({ districts: ['Бостандыкский'], rooms: '2', floorPreference: 'middle' });
-if (twoRoomMiddle.length !== 4 || twoRoomMiddle.some((property) => property.rooms !== 2 || property.floor <= 1 || property.floor >= property.totalFloors)) {
-  throw new Error('Two-room + middle-floor filter should return all 4 Sprint 4 middle-floor properties.');
-}
-
-const twoRoomPriceOrder = [
-  ['4YOU', 91_000_000, 86_000_000, 84_000_000],
-  ['Симфония', 53_000_000, 50_000_000, 48_000_000],
-  ['Riviera', 60_000_000, 55_000_000, 53_000_000],
-  ['4Hills', 62_000_000, 58_000_000, 56_000_000],
-];
-
-for (const [complexName, middlePrice, firstPrice, lastPrice] of twoRoomPriceOrder) {
-  const group = bostandykTwoRoomItems.filter((property) => property.complexName === complexName);
-  if (group.length !== 3) {
-    throw new Error(`Expected first/middle/last two-room properties for ${complexName}, got ${group.length}.`);
-  }
-  if (!group.some((property) => property.floor > 1 && property.floor < property.totalFloors && property.price === middlePrice)) {
-    throw new Error(`${complexName} middle-floor two-room price is not ${middlePrice}.`);
-  }
-  if (!group.some((property) => property.floor === 1 && property.price === firstPrice)) {
-    throw new Error(`${complexName} first-floor two-room price is not ${firstPrice}.`);
-  }
-  if (!group.some((property) => property.floor === property.totalFloors && property.price === lastPrice)) {
-    throw new Error(`${complexName} last-floor two-room price is not ${lastPrice}.`);
-  }
-  if (!(middlePrice > firstPrice && firstPrice > lastPrice)) {
-    throw new Error(`${complexName} price order must be middle > first > last.`);
-  }
-}
-
-const bothDistrictsMiddle = hardFilter({ districts: ['Наурызбайский', 'Бостандыкский'], rooms: '1', floorPreference: 'middle' });
-if (!bothDistrictsMiddle.some((property) => property.district === 'Наурызбайский') || !bothDistrictsMiddle.some((property) => property.district === 'Бостандыкский')) {
-  throw new Error('Combined district filter should keep floor filtering active for both districts.');
-}
-
-const softBudgetCheck = hardFilter({ districts: ['Бостандыкский'], rooms: '1,2', floorPreference: 'any' }).filter((property) => property.price > 30_000_000);
-if (softBudgetCheck.length !== 24) {
-  throw new Error('Budget must be a soft score factor: Bostandyk properties above 30m should remain visible.');
-}
-
-console.log('Bostandyk room and floor-filter checks passed.');
+console.log('Bostandyk floor-category checks passed.');

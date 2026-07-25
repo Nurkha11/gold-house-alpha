@@ -1,5 +1,6 @@
 import { Owner, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 import { Property } from '@/data/properties';
+import { createLocation } from '@/data/residentialComplexes';
 
 let currentOwner: Owner | null = null;
 
@@ -17,6 +18,17 @@ let submissions: PropertySubmission[] = [
       district: 'Бостандыкский',
       complexName: 'ЖК Gold Residence',
       street: 'ул. Гагарина, 124',
+      location: createLocation({
+        fullAddress: 'Алматы, Бостандыкский район, ул. Гагарина, 124',
+        district: 'Бостандыкский',
+        latitude: 43.2219,
+        longitude: 76.8973,
+        source: 'manual',
+        districtSource: 'manual',
+        locationConfirmed: true,
+      }),
+      residentialComplexId: undefined,
+      newResidentialComplex: null,
     },
     characteristics: {
       rooms: '3',
@@ -79,9 +91,17 @@ export function loginOwner(name: string, phone: string) {
   currentOwner = {
     id: `owner-${Date.now()}`,
     name: name.trim() || 'Собственник',
-    phone: phone.trim() || '+7',
+    phone: formatOwnerPhone(phone),
   };
   return currentOwner;
+}
+
+function formatOwnerPhone(value: string) {
+  const raw = value.replace(/\D/g, '');
+  const local = (raw.startsWith('7') ? raw.slice(1) : raw).slice(0, 10);
+  const parts = [local.slice(0, 3), local.slice(3, 6), local.slice(6, 8), local.slice(8, 10)].filter(Boolean);
+
+  return `+7${parts.length ? ` ${parts.join(' ')}` : ' '}`;
 }
 
 export function getCurrentOwner() {
@@ -112,6 +132,49 @@ export function updateSubmissionStatus(id: string, status: SubmissionStatus) {
   }
 
   existing.status = status;
+  existing.updatedAt = new Date().toISOString();
+  return existing;
+}
+
+export function updateSubmissionLocationReview(id: string, action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') {
+  const existing = submissions.find((submission) => submission.id === id);
+
+  if (!existing) {
+    return undefined;
+  }
+
+  const location = existing.address.location;
+
+  if (location && action === 'confirm_location') {
+    existing.address.location = {
+      ...location,
+      locationConfirmed: true,
+      locationWarnings: [],
+    };
+  }
+
+  if (location && action === 'request_manual_check') {
+    existing.address.location = {
+      ...location,
+      locationWarnings: Array.from(new Set([...(location.locationWarnings ?? []), 'Администратор запросил ручную проверку адреса.'])),
+    };
+    existing.status = 'reviewing';
+  }
+
+  if (existing.address.newResidentialComplex && action === 'approve_complex') {
+    existing.address.newResidentialComplex = {
+      ...existing.address.newResidentialComplex,
+      status: 'approved',
+    };
+  }
+
+  if (existing.address.newResidentialComplex && action === 'merge_complex') {
+    existing.address.newResidentialComplex = {
+      ...existing.address.newResidentialComplex,
+      status: 'merged',
+    };
+  }
+
   existing.updatedAt = new Date().toISOString();
   return existing;
 }
@@ -177,7 +240,9 @@ function submissionToProperty(submission: PropertySubmission): Property {
     fitFor: [submission.ownerDescription.fitFor || 'Подойдет покупателю с совпадающим профилем поиска.'],
     sellingReason: submission.ownerDescription.sellingReason || 'Причина продажи будет уточнена менеджером.',
     availableViewingTime: { day: 'Сегодня', time: '18:00–20:00' },
-    locationText: `${submission.address.district}. ${submission.address.street || submission.address.complexName}. Рядом парк, школа, супермаркет и остановка.`,
+    locationText: submission.address.location
+      ? `${submission.address.district}. ${submission.address.location.fullAddress}. Точное расположение подтверждено для модерации; покупателю показываем район и ориентиры.`
+      : `${submission.address.district}. ${submission.address.street || submission.address.complexName}. Рядом парк, школа, супермаркет и остановка.`,
     videos: [
       { label: 'Квартира', duration: '1:10' },
       { label: 'Подъезд', duration: '0:35' },

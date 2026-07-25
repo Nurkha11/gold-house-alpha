@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { colors, radius, spacing } from '@/constants/theme';
-import { FloorPreference, startTrainingSession } from '@/data/aiTrainingStore';
+import { FloorPreference, normalizeFloorCategories, startTrainingSession } from '@/data/aiTrainingStore';
 
 export default function AiLoadingScreen() {
   const params = useLocalSearchParams<{
@@ -17,6 +17,7 @@ export default function AiLoadingScreen() {
     budgetMax?: string;
     rooms?: string;
     floorPreference?: FloorPreference;
+    selectedFloorCategories?: string;
   }>();
   const pulse = useRef(new Animated.Value(0.86)).current;
 
@@ -28,7 +29,8 @@ export default function AiLoadingScreen() {
       rooms: params.rooms ?? '1',
       budgetMin: params.budgetMin ? Number(params.budgetMin) : undefined,
       budgetMax: params.budgetMax ? Number(params.budgetMax) : undefined,
-      floorPreference: params.floorPreference ?? 'any',
+      selectedFloorCategories: normalizeFloorCategories(params.selectedFloorCategories ?? params.floorPreference),
+      floorPreference: params.floorPreference,
     });
 
     const animation = Animated.loop(
@@ -40,7 +42,7 @@ export default function AiLoadingScreen() {
     animation.start();
 
     return () => animation.stop();
-  }, [params.budgetMax, params.budgetMin, params.city, params.district, params.selectedDistricts, params.floorPreference, params.rooms, pulse]);
+  }, [params.budgetMax, params.budgetMin, params.city, params.district, params.selectedDistricts, params.floorPreference, params.selectedFloorCategories, params.rooms, pulse]);
 
   return (
     <Screen scroll={false}>
