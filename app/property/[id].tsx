@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import PropertyMap from '@/components/PropertyMap';
 import { Screen } from '@/components/Screen';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { getRatingCount, recordTrainingSignal } from '@/data/aiTrainingStore';
@@ -191,12 +192,23 @@ export default function PropertyDetailsScreen() {
 
       <View style={styles.block}>
         <Text style={styles.blockTitle}>На карте</Text>
-        <View style={styles.mapMock}>
-          <View style={styles.pin} />
-          <Text style={styles.mapTitle}>{property.complexName}</Text>
-          <Text style={styles.mapText}>{property.locationText}</Text>
-        </View>
-        <Pressable style={styles.mapButton} onPress={() => undefined}>
+        {property.coordinates ? (
+          <PropertyMap center={property.coordinates} zoom={16} height={220} />
+        ) : (
+          <View style={styles.mapMock}>
+            <View style={styles.pin} />
+            <Text style={styles.mapTitle}>{property.complexName}</Text>
+            <Text style={styles.mapText}>{property.locationText}</Text>
+          </View>
+        )}
+        <Pressable
+          style={styles.mapButton}
+          onPress={() => {
+            if (!property.coordinates) return;
+            const { lat, lng } = property.coordinates;
+            Linking.openURL(`https://yandex.ru/maps/?ll=${lng}%2C${lat}&z=16&pt=${lng},${lat}`);
+          }}
+        >
           <Text style={styles.mapButtonText}>↗ Открыть в картах</Text>
         </Pressable>
       </View>

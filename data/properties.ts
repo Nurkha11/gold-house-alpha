@@ -48,6 +48,7 @@ export type Property = {
   videos: PropertyVideo[];
   ownerName?: string;
   ownerPhone?: string;
+  coordinates?: { lat: number; lng: number };
 };
 
 const apartmentVideos: PropertyVideo[] = [
@@ -607,3 +608,19 @@ export const properties: Property[] = [
   createTwoRoomProperty({ id: 'gh-3room-011', rooms: 3, complexName: 'Алма Сити 4', price: 45_000_000, area: 84, floor: 8, totalFloors: 16, year: 2023, buildingMaterial: 'Монолит', ceilingHeight: 2.7, balcony: 'Да', elevator: 'Да', parking: 'Да', renovation: 'Хороший ремонт', furniture: 'Полностью', appliances: 'Частично', pros: ['Средний этаж', '84 м²', 'Мебель остается'], cons: ['Часть техники забирают', 'Потолки ниже, чем в новых ЖК'], fitFor: ['Семья', 'Покупатель без долгого ремонта'], sellingReason: 'Нужна квартира рядом с работой.', ownerPhone: '+77053000011', aiSummary: 'Трехкомнатная квартира с хорошим ремонтом и мебелью. Подойдет семье, которой нужна площадь больше 80 м².', matchPercent: 91, imageSet: 'alma' }),
   createTwoRoomProperty({ id: 'gh-3room-012', rooms: 3, complexName: 'Алма Сити 4', price: 49_000_000, area: 90, floor: 16, totalFloors: 16, year: 2023, buildingMaterial: 'Монолит', ceilingHeight: 2.7, balcony: 'Да', elevator: 'Да', parking: 'Да', renovation: 'Евроремонт', furniture: 'Полностью', appliances: 'Полностью', pros: ['90 м²', 'Готова к проживанию', 'Парковка'], cons: ['Последний этаж', 'Цена ближе к верхней границе'], fitFor: ['Большая семья', 'Покупатель готового жилья'], sellingReason: 'Переезжаем в дом за городом.', ownerPhone: '+77053000012', aiSummary: 'Просторная трехкомнатная квартира с евроремонтом. Подойдет большой семье, которая хочет сразу заехать и жить.', matchPercent: 94, imageSet: 'alma' }),
 ];
+
+// Real coordinates for a handful of Бостандыкский district apartments, to test PropertyMap.
+const propertyCoordinates: Record<string, { lat: number; lng: number }> = {
+  'bostandyk-1room-4you-001': { lat: 43.215021, lng: 76.929861 },
+  'bostandyk-1room-abay130-002': { lat: 43.211946, lng: 76.928117 },
+  'bostandyk-1room-riviera-003': { lat: 43.198765, lng: 76.921543 },
+  'bostandyk-2room-simfoniya-middle-014': { lat: 43.207312, lng: 76.933298 },
+  'bostandyk-3room-estet-middle-026': { lat: 43.203488, lng: 76.925671 },
+};
+
+properties.forEach((property) => {
+  const coordinates = propertyCoordinates[property.id];
+  if (coordinates) {
+    property.coordinates = coordinates;
+  }
+});
