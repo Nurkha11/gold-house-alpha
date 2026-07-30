@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BackHandler, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { OwnerField } from '@/components/OwnerField';
 import { OwnerMediaUploader } from '@/components/OwnerMediaUploader';
-import { OwnerLocationPicker } from '@/components/OwnerLocationPicker';
 import { OwnerStatusBadge } from '@/components/OwnerStatusBadge';
 import { OwnerStepIndicator } from '@/components/OwnerStepIndicator';
 import { OptionButton } from '@/components/OptionButton';
@@ -12,7 +11,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
-import { getCurrentOwner, saveSubmission } from '@/data/ownerStore';
+import { getCurrentOwner, getSubmissionById, saveSubmission } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 import { createLocation } from '@/data/residentialComplexes';
 
@@ -25,6 +24,7 @@ const repairOptions = ['Хороший ремонт', 'Средний ремон
 const remainsOptions = ['Полностью', 'Частично', 'Не остается'];
 const bathroomOptions = ['Совмещенный', 'Раздельный', '2 санузла'];
 const buildingMaterialOptions = ['Монолит', 'Кирпич', 'Панель', 'Монолит-кирпич-панель', 'Панель-кирпич', 'Другое'];
+const districtOptions = ['Бостандыкский', 'Наурызбайский'];
 const ownerVideoQuestions = [
   'Представьтесь.',
   'Почему продаете квартиру?',
@@ -105,9 +105,17 @@ function formatPrice(value: string) {
 
 export default function OwnerSubmissionScreen() {
   const owner = getCurrentOwner();
+  const { id } = useLocalSearchParams<{ id?: string }>();
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
-  const [submission, setSubmission] = useState<PropertySubmission>(() => createInitialSubmission(owner?.id ?? 'owner-local'));
+  const [submission, setSubmission] = useState<PropertySubmission>(() => {
+    const existing = id ? getSubmissionById(id) : undefined;
+    if (existing) {
+      return { ...existing, status: existing.status === 'changes_requested' ? 'draft' : existing.status };
+    }
+
+    return createInitialSubmission(owner?.id ?? 'owner-local');
+  });
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -129,16 +137,6 @@ export default function OwnerSubmissionScreen() {
 
   function updateAddress(key: keyof PropertySubmission['address'], value: string) {
     setSubmission((current) => ({ ...current, address: { ...current.address, [key]: value } }));
-  }
-
-  function updateAddressFromLocation(payload: PropertySubmission['address']) {
-    setSubmission((current) => ({
-      ...current,
-      address: {
-        ...current.address,
-        ...payload,
-      },
-    }));
   }
 
   function updateCharacteristics(key: keyof PropertySubmission['characteristics'], value: string) {
@@ -182,6 +180,7 @@ export default function OwnerSubmissionScreen() {
       ownerName: owner?.name ?? submission.ownerName,
       ownerPhone: owner?.phone ?? submission.ownerPhone,
       status,
+      adminComment: status === 'submitted' ? undefined : submission.adminComment,
       updatedAt: now,
     });
     if (status === 'submitted') {
@@ -215,16 +214,12 @@ export default function OwnerSubmissionScreen() {
 
       {step === 1 ? (
         <Section title="Где находится квартира?">
-          <OwnerLocationPicker
-            city={submission.address.city}
-            district={submission.address.district}
-            complexName={submission.address.complexName}
-            street={submission.address.street}
-            location={submission.address.location}
-            complexId={submission.address.residentialComplexId}
-            newComplex={submission.address.newResidentialComplex}
-            onAddressChange={(payload) => updateAddressFromLocation(payload)}
-          />
+          <View style={styles.twoColumns}>
+            <OwnerField label="Город" value={submission.address.city} onChangeText={(value) => updateAddress('city', value)} placeholder="Алматы" />
+            <OwnerField label="ЖК / название дома" value={submission.address.complexName} onChangeText={(value) => updateAddress('complexName', value)} placeholder="Например, Riviera" />
+          </View>
+          {renderChoiceGroup('Район', districtOptions, submission.address.district, (value) => updateAddress('district', value))}
+          <OwnerField label="Адрес" value={submission.address.street} onChangeText={(value) => updateAddress('street', value)} placeholder="Улица, дом, корпус, квартира" />
         </Section>
       ) : null}
 
@@ -386,8 +381,7 @@ function canGoNext(step: number, submission: PropertySubmission) {
     return true;
   }
 
-  const location = submission.address.location;
-  return Boolean(location && Number.isFinite(location.latitude) && Number.isFinite(location.longitude) && location.locationConfirmed);
+  return Boolean(submission.address.city.trim() && submission.address.district.trim() && (submission.address.street.trim() || submission.address.complexName.trim()));
 }
 
 function buildDescription(submission: PropertySubmission) {

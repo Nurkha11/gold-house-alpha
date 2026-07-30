@@ -25,7 +25,11 @@ export default function OwnerDashboardScreen() {
 
       <Section title="Мои заявки" soft>
         {submissions.map((submission) => (
-          <Pressable key={submission.id} style={styles.submissionCard}>
+          <Pressable
+            key={submission.id}
+            style={styles.submissionCard}
+            onPress={() => router.push({ pathname: '/owner-submission', params: { id: submission.id } } as never)}
+          >
             <View style={styles.cardTop}>
               <View style={styles.cardText}>
                 <Text style={styles.title}>{submission.address.complexName || submission.address.street || 'Новая квартира'}</Text>
@@ -38,6 +42,15 @@ export default function OwnerDashboardScreen() {
             <Text style={styles.price}>
               {submission.priceTerms.price ? `${Number(submission.priceTerms.price).toLocaleString('ru-RU')} ₸` : 'Цена не указана'}
             </Text>
+            {submission.adminComment ? (
+              <View style={styles.commentBox}>
+                <Text style={styles.commentTitle}>Комментарий Gold House</Text>
+                <Text style={styles.commentText}>{submission.adminComment}</Text>
+              </View>
+            ) : null}
+            {submission.status === 'changes_requested' ? (
+              <PrimaryButton title="Исправить и отправить снова" variant="secondary" onPress={() => router.push({ pathname: '/owner-submission', params: { id: submission.id } } as never)} />
+            ) : null}
           </Pressable>
         ))}
       </Section>
@@ -78,5 +91,25 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 22,
     fontWeight: '900',
+  },
+  commentBox: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  commentTitle: {
+    color: colors.accentDark,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  commentText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
   },
 });

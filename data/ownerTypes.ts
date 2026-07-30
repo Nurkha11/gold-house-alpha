@@ -7,6 +7,7 @@ export type SubmissionStatus =
   | 'needs_shooting'
   | 'approved'
   | 'published'
+  | 'changes_requested'
   | 'rejected';
 
 export type Owner = {
@@ -29,6 +30,7 @@ export type PropertySubmission = {
   ownerName: string;
   ownerPhone: string;
   status: SubmissionStatus;
+  adminComment?: string;
   createdAt: string;
   updatedAt: string;
   address: {

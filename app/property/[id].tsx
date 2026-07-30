@@ -94,7 +94,7 @@ export default function PropertyDetailsScreen() {
 
   return (
     <Screen scroll={false}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scroller} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
       <View style={styles.galleryWrap}>
         <Image source={{ uri: activePhoto }} style={styles.hero} />
         <View style={styles.heroOverlay} />
@@ -318,7 +318,8 @@ function InfoBlock({ title, header, items, muted = false }: { title: string; hea
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: spacing.xl },
+  scroller: { flex: 1 },
+  scrollContent: { paddingBottom: 260 },
   galleryWrap: { position: 'relative', marginHorizontal: -spacing.lg, marginTop: -spacing.lg, marginBottom: spacing.lg },
   hero: { width: '100%', height: 430, backgroundColor: colors.surface },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(13,13,13,0.08)' },
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
   similarPrice: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '900' },
   saveSmall: { color: colors.accentDark, fontSize: 20, fontWeight: '900' },
   similarMeta: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  bottomSpacer: { height: 230 },
+  bottomSpacer: { height: spacing.xl },
   bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: 'rgba(255,255,255,0.97)', padding: spacing.sm, gap: spacing.sm, ...shadows.card },
   actionRow: { flexDirection: 'row', gap: spacing.sm },
   saveButton: { flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },

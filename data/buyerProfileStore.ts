@@ -1,5 +1,6 @@
-import { Property, properties } from '@/data/properties';
+import { Property } from '@/data/properties';
 import type { BuyerPreferences, TrainingSignal, TrainingSignalType } from '@/data/aiTrainingStore';
+import { getBuyerPropertyById } from '@/data/propertyStore';
 
 export type BuyerProfile = {
   id: string;
@@ -147,7 +148,7 @@ function actionToSignalType(type: BuyerActionType): TrainingSignalType | 'detail
 }
 
 function findProperty(propertyId: string) {
-  return properties.find((property) => property.id === propertyId);
+  return getBuyerPropertyById(propertyId);
 }
 
 function createPropertySnapshot(property?: Property): BuyerPropertySnapshot | undefined {
@@ -342,6 +343,18 @@ export function getActiveBuyerEvents() {
 export function getBuyerEventsForProfile(buyerId: string) {
   loadMemory();
   return memory.buyerEvents.filter((event) => event.buyerId === buyerId);
+}
+
+export function removeBuyerFavorite(propertyId: string) {
+  loadMemory();
+  const buyerId = currentBuyerId();
+  if (!buyerId) return;
+
+  memory.buyerEvents = memory.buyerEvents.filter(
+    (event) => !(event.buyerId === buyerId && event.propertyId === propertyId && (event.type === 'LIKE' || event.type === 'SAVE')),
+  );
+
+  if (!buyerId.startsWith(anonymousPrefix)) persistMemory();
 }
 
 export function saveFinalRecommendationSignals(propertyIds: string[]) {

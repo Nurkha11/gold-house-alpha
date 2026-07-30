@@ -84,6 +84,7 @@ export const statusLabels: Record<SubmissionStatus, string> = {
   needs_shooting: 'Нужна съемка',
   approved: 'Одобрена',
   published: 'Опубликована',
+  changes_requested: 'Нужны исправления',
   rejected: 'Отклонена',
 };
 
@@ -124,7 +125,7 @@ export function getSubmissionById(id: string) {
   return submissions.find((submission) => submission.id === id);
 }
 
-export function updateSubmissionStatus(id: string, status: SubmissionStatus) {
+export function updateSubmissionStatus(id: string, status: SubmissionStatus, adminComment?: string) {
   const existing = submissions.find((submission) => submission.id === id);
 
   if (!existing) {
@@ -132,6 +133,7 @@ export function updateSubmissionStatus(id: string, status: SubmissionStatus) {
   }
 
   existing.status = status;
+  existing.adminComment = adminComment?.trim() || undefined;
   existing.updatedAt = new Date().toISOString();
   return existing;
 }
@@ -218,6 +220,12 @@ function submissionToProperty(submission: PropertySubmission): Property {
     area: Number(submission.characteristics.totalArea || 0),
     floor: Number(submission.characteristics.floor || 1),
     totalFloors: Number(submission.characteristics.totalFloors || 1),
+    floorCategory:
+      Number(submission.characteristics.floor || 1) === 1
+        ? 'first'
+        : Number(submission.characteristics.floor || 1) === Number(submission.characteristics.totalFloors || 1)
+          ? 'last'
+          : 'middle',
     year: Number(submission.characteristics.year || new Date().getFullYear()),
     buildingMaterial: submission.characteristics.buildingMaterial || 'Не указан',
     renovation: submission.condition.renovation || 'Не указан',

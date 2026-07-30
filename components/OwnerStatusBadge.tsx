@@ -14,6 +14,7 @@ const statusTone: Record<SubmissionStatus, 'neutral' | 'gold' | 'green' | 'dange
   needs_shooting: 'gold',
   approved: 'green',
   published: 'green',
+  changes_requested: 'gold',
   rejected: 'danger',
 };
 

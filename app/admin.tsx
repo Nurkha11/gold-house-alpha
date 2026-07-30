@@ -8,25 +8,16 @@ import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { isAdminAuthenticated, verifyAdminPin } from '@/data/adminStore';
-import { getActiveBuyerProfile } from '@/data/buyerProfileStore';
 import { getAllSubmissions, statusLabels } from '@/data/ownerStore';
 import { PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
-const statusOrder: SubmissionStatus[] = ['submitted', 'reviewing', 'needs_shooting', 'approved', 'published', 'rejected'];
-const ADMIN_PHONES = ['+77021734499'];
-
-function normalizePhone(phone?: string) {
-  const digits = String(phone ?? '').replace(/\D/g, '');
-  return digits.startsWith('7') ? `+${digits}` : `+7${digits}`;
-}
+const statusOrder: SubmissionStatus[] = ['submitted', 'reviewing', 'changes_requested', 'needs_shooting', 'approved', 'published', 'rejected'];
 
 export default function AdminScreen() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [authenticated, setAuthenticated] = useState(() => isAdminAuthenticated());
   const submissions = useMemo(() => getAllSubmissions(), [authenticated]);
-  const currentUser = getActiveBuyerProfile();
-  const adminAllowed = Boolean(currentUser && ADMIN_PHONES.includes(normalizePhone(currentUser.phone)));
 
   function unlock() {
     if (verifyAdminPin(pin)) {
@@ -36,19 +27,6 @@ export default function AdminScreen() {
     }
 
     setError('Неверный PIN-код');
-  }
-
-  if (!adminAllowed) {
-    return (
-      <Screen>
-        <View style={styles.pinScreen}>
-          <Text style={styles.brand}>Gold House</Text>
-          <Text style={styles.pinTitle}>Доступ запрещен</Text>
-          <Text style={styles.pinText}>Эта страница доступна только администраторам Gold House.</Text>
-          <PrimaryButton title="Вернуться в главное меню" onPress={() => router.replace('/' as never)} />
-        </View>
-      </Screen>
-    );
   }
 
   if (!authenticated) {

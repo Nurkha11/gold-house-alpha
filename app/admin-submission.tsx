@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { OwnerStatusBadge } from '@/components/OwnerStatusBadge';
 import { PageHeader } from '@/components/PageHeader';
@@ -7,29 +7,20 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, spacing } from '@/constants/theme';
-import { getActiveBuyerProfile } from '@/data/buyerProfileStore';
-import { getSubmissionById, updateSubmissionLocationReview, updateSubmissionStatus } from '@/data/ownerStore';
+import { isAdminAuthenticated } from '@/data/adminStore';
+import { getSubmissionById, updateSubmissionStatus } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
 const adminActions: Array<{ label: string; status: SubmissionStatus }> = [
-  { label: 'Взять в работу', status: 'reviewing' },
-  { label: 'Требуется съемка', status: 'needs_shooting' },
-  { label: 'Одобрить', status: 'approved' },
-  { label: 'Опубликовать', status: 'published' },
+  { label: 'Одобрить и опубликовать', status: 'published' },
   { label: 'Отклонить', status: 'rejected' },
 ];
-const ADMIN_PHONES = ['+77021734499'];
-
-function normalizePhone(phone?: string) {
-  const digits = String(phone ?? '').replace(/\D/g, '');
-  return digits.startsWith('7') ? `+${digits}` : `+7${digits}`;
-}
 
 export default function AdminSubmissionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [submission, setSubmission] = useState(() => getSubmissionById(id));
-  const currentUser = getActiveBuyerProfile();
-  const adminAllowed = Boolean(currentUser && ADMIN_PHONES.includes(normalizePhone(currentUser.phone)));
+  const [adminComment, setAdminComment] = useState('');
+  const adminAllowed = isAdminAuthenticated();
 
   if (!adminAllowed) {
     return (
@@ -51,15 +42,8 @@ export default function AdminSubmissionScreen() {
 
   const currentSubmission = submission;
 
-  function setStatus(status: SubmissionStatus) {
-    const updated = updateSubmissionStatus(currentSubmission.id, status);
-    if (updated) {
-      setSubmission({ ...updated });
-    }
-  }
-
-  function reviewLocation(action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') {
-    const updated = updateSubmissionLocationReview(currentSubmission.id, action);
+  function setStatus(status: SubmissionStatus, comment?: string) {
+    const updated = updateSubmissionStatus(currentSubmission.id, status, comment);
     if (updated) {
       setSubmission({ ...updated });
     }
@@ -88,24 +72,28 @@ export default function AdminSubmissionScreen() {
               onPress={() => setStatus(action.status)}
             />
           ))}
+          <TextInput
+            value={adminComment}
+            onChangeText={setAdminComment}
+            placeholder="Комментарий для собственника, например: Добавьте фотографии кухни"
+            placeholderTextColor={colors.muted}
+            multiline
+            style={styles.commentInput}
+          />
+          <PrimaryButton
+            title="Запросить исправления"
+            variant="secondary"
+            onPress={() => setStatus('changes_requested', adminComment || 'Нужно исправить данные объявления перед публикацией.')}
+          />
         </View>
       </Section>
 
-      <SubmissionDetails submission={currentSubmission} onReviewLocation={reviewLocation} />
+      <SubmissionDetails submission={currentSubmission} />
     </Screen>
   );
 }
 
-function SubmissionDetails({
-  submission,
-  onReviewLocation,
-}: {
-  submission: PropertySubmission;
-  onReviewLocation: (action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') => void;
-}) {
-  const location = submission.address.location;
-  const newComplex = submission.address.newResidentialComplex;
-
+function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
   return (
     <>
       <Section title="Адрес">
@@ -113,31 +101,6 @@ function SubmissionDetails({
         <Info label="Район" value={submission.address.district} />
         <Info label="ЖК / дом" value={submission.address.complexName || '-'} />
         <Info label="Адрес" value={submission.address.street || '-'} />
-      </Section>
-
-      <Section title="Проверка локации">
-        <View style={styles.grid}>
-          <Info label="Полный адрес" value={location?.fullAddress || 'Адрес не выбран через карту'} />
-          <Info label="Координаты" value={location ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}` : '-'} />
-          <Info label="Источник адреса" value={location?.source === 'yandex' ? 'Yandex' : 'Manual fallback'} />
-          <Info label="Источник района" value={location?.districtSource || '-'} />
-          <Info label="Дом подтвержден собственником" value={location?.locationConfirmed ? 'Да' : 'Нет'} />
-          <Info label="Публичная точность" value={location?.publicLocationPrecision === 'approximate' ? 'примерная для покупателя' : '-'} />
-          <Info label="Выбранный ЖК ID" value={submission.address.residentialComplexId || '-'} />
-          <Info label="Новый ЖК" value={newComplex ? `${newComplex.name} · ${newComplex.status}` : '-'} />
-          <Info label="Похожие ЖК" value={newComplex?.duplicateComplexIds.length ? newComplex.duplicateComplexIds.join(', ') : '-'} />
-          <Info label="Предупреждения" value={location?.locationWarnings?.length ? location.locationWarnings.join('\n') : 'Нет'} />
-        </View>
-        <View style={styles.actions}>
-          <PrimaryButton title="Подтвердить локацию" variant="secondary" onPress={() => onReviewLocation('confirm_location')} />
-          <PrimaryButton title="Ручная проверка адреса" variant="ghost" onPress={() => onReviewLocation('request_manual_check')} />
-          {newComplex ? (
-            <>
-              <PrimaryButton title="Одобрить новый ЖК" variant="secondary" onPress={() => onReviewLocation('approve_complex')} />
-              <PrimaryButton title="Объединить с существующим ЖК" variant="ghost" onPress={() => onReviewLocation('merge_complex')} />
-            </>
-          ) : null}
-        </View>
       </Section>
 
       <Section title="Характеристики">
@@ -236,6 +199,19 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  commentInput: {
+    minHeight: 112,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '700',
+    padding: spacing.md,
+    textAlignVertical: 'top',
   },
   grid: {
     gap: spacing.sm,
