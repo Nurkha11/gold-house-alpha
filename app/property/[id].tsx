@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import PropertyMap from '@/components/PropertyMap';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
+import { getBalconyLabel, normalizeBalconyType } from '@/data/balconyTypes';
+import { getElevatorLabel } from '@/data/elevatorTypes';
+import { getParkingLabel } from '@/data/parkingTypes';
 import { getRatingCount, recordTrainingSignal } from '@/data/aiTrainingStore';
+import { getLocalMediaReferenceId, loadLocalMediaBlobUrl } from '@/data/localMediaStore';
 import { Property, properties } from '@/data/properties';
 import { getBuyerProperties, getBuyerPropertyById } from '@/data/propertyStore';
 import { getSelectedDistricts } from '@/data/aiTrainingStore';
@@ -45,10 +50,57 @@ function cleanText(value?: string) {
   return text;
 }
 
+function useResolvedMediaUris(uris: string[]) {
+  const [resolvedUris, setResolvedUris] = useState(uris);
+
+  useEffect(() => {
+    let mounted = true;
+    const objectUrls: string[] = [];
+
+    async function resolveUris() {
+      const resolved = await Promise.all(
+        uris.map(async (uri) => {
+          const mediaId = getLocalMediaReferenceId(uri);
+          if (!mediaId) {
+            return uri;
+          }
+
+          const blobUrl = await loadLocalMediaBlobUrl(mediaId).catch(() => null);
+          if (blobUrl) {
+            objectUrls.push(blobUrl);
+          }
+
+          return blobUrl ?? uri;
+        }),
+      );
+
+      if (mounted) {
+        setResolvedUris(resolved);
+      }
+    }
+
+    resolveUris();
+
+    return () => {
+      mounted = false;
+      if (typeof URL !== 'undefined') {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      }
+    };
+  }, [uris.join('|')]);
+
+  return resolvedUris;
+}
+
 export default function PropertyDetailsScreen() {
-  const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
+  const { id, source, targetRatingCount } = useLocalSearchParams<{ id: string; source?: string; targetRatingCount?: string }>();
+  const { width } = useWindowDimensions();
+  const isWideLayout = width >= 900;
   const property = getBuyerPropertyById(id) ?? getBuyerProperties()[0] ?? properties[0];
   const gallery = property.images?.length ? property.images : [property.imageUrl];
+  const resolvedGallery = useResolvedMediaUris(gallery);
+  const videoUris = property.videos.map((video) => video.uri).filter((uri): uri is string => Boolean(uri));
+  const resolvedVideoUris = useResolvedMediaUris(videoUris);
   const [photoIndex, setPhotoIndex] = useState(0);
   const [viewingVisible, setViewingVisible] = useState(false);
   const [viewingSent, setViewingSent] = useState(false);
@@ -56,7 +108,15 @@ export default function PropertyDetailsScreen() {
   const [selectedTime, setSelectedTime] = useState('18:30');
   const openedAt = useRef(Date.now());
   const similar = useMemo(() => similarTo(property), [property]);
-  const activePhoto = gallery[photoIndex];
+  const activePhoto = resolvedGallery[photoIndex] ?? gallery[photoIndex];
+  const resolvedVideoByUri = useMemo(() => {
+    const map = new Map<string, string>();
+    videoUris.forEach((uri, index) => {
+      map.set(uri, resolvedVideoUris[index] ?? uri);
+    });
+    return map;
+  }, [resolvedVideoUris, videoUris.join('|')]);
+  const detailVideoHeight = isWideLayout ? 292 : 190;
 
   useEffect(() => {
     recordTrainingSignal(property.id, 'detail_view');
@@ -81,12 +141,14 @@ export default function PropertyDetailsScreen() {
 
   function rateFromDetails(type: 'like' | 'dislike') {
     recordTrainingSignal(property.id, type);
-    if (source === 'training' && getRatingCount() >= 10) {
+    const trainingTarget = targetRatingCount ? Number(targetRatingCount) : 5;
+
+    if (source === 'training' && getRatingCount() >= trainingTarget) {
       router.replace('/ai-analysis' as never);
       return;
     }
     if (source === 'training') {
-      router.replace('/swipe' as never);
+      router.replace({ pathname: '/swipe', params: { trainingMode: 'continue', targetRatingCount: String(trainingTarget) } } as never);
       return;
     }
     router.back();
@@ -94,9 +156,13 @@ export default function PropertyDetailsScreen() {
 
   return (
     <Screen scroll={false}>
-      <ScrollView style={styles.scroller} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.galleryWrap}>
-        <Image source={{ uri: activePhoto }} style={styles.hero} />
+      <ScrollView
+        style={styles.scroller}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, isWideLayout && styles.scrollContentWide]}
+      >
+      <View style={[styles.galleryWrap, isWideLayout && styles.galleryWrapWide]}>
+        <ResolvedImage uri={activePhoto} style={[styles.hero, isWideLayout && styles.heroWide]} resizeMode="cover" />
         <View style={styles.heroOverlay} />
         <View style={styles.topControls}>
           <Pressable style={styles.iconButton} onPress={() => router.back()}>
@@ -117,7 +183,7 @@ export default function PropertyDetailsScreen() {
             <Text style={styles.photoCounterText}>{photoIndex + 1} / 24</Text>
           </View>
         </View>
-        <View style={styles.galleryNav}>
+        <View style={[styles.galleryNav, isWideLayout && styles.galleryNavWide]}>
           <Pressable style={styles.galleryPill} onPress={prevPhoto}>
             <Text style={styles.galleryPillText}>‹</Text>
           </Pressable>
@@ -141,6 +207,9 @@ export default function PropertyDetailsScreen() {
         <QuickFact label="Год" value={String(property.year)} />
         <QuickFact label="Потолки" value={`${property.ceilingHeight} м`} />
         <QuickFact label="Ремонт" value={property.renovation} />
+        <QuickFact label="Балкон / лоджия" value={getBalconyLabel(normalizeBalconyType(property.balconyType, property.balcony))} />
+        <QuickFact label="Лифт" value={getElevatorLabel(property)} />
+        <QuickFact label="Парковка" value={getParkingLabel(property)} />
       </View>
 
       <View style={styles.recommendCard}>
@@ -166,9 +235,23 @@ export default function PropertyDetailsScreen() {
         <Text style={styles.blockTitle}>Видео и фото</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.videoRow}>
           {['Квартира', 'Подъезд', 'Двор', 'Собственник'].map((label, index) => (
-            <View key={label} style={styles.videoCard}>
+            <View key={label} style={[styles.videoCard, property.videos[index]?.uri && styles.videoPlayerCard, property.videos[index]?.uri && isWideLayout && styles.videoPlayerCardWide]}>
+              {property.videos[index]?.uri && Platform.OS === 'web'
+                ? React.createElement('video', {
+                    src: resolvedVideoByUri.get(property.videos[index]?.uri ?? '') ?? property.videos[index]?.remoteUrl ?? property.videos[index]?.uri,
+                    controls: true,
+                    preload: 'metadata',
+                    style: {
+                      width: '100%',
+                      height: detailVideoHeight,
+                      borderRadius: 14,
+                      backgroundColor: colors.black,
+                      objectFit: 'contain',
+                    },
+                  })
+                : null}
               <Text style={styles.play}>▶</Text>
-              <Text style={styles.videoLabel}>{label}</Text>
+              <Text style={styles.videoLabel}>{property.videos[index]?.label ?? label}</Text>
               <Text style={styles.videoDuration}>{property.videos[index]?.duration ?? '0:40'}</Text>
             </View>
           ))}
@@ -218,7 +301,7 @@ export default function PropertyDetailsScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.similarRow}>
           {similar.map((item) => (
             <Pressable key={item.id} style={styles.similarCard} onPress={() => router.push({ pathname: '/property/[id]', params: { id: item.id } })}>
-              <Image source={{ uri: item.images[0] }} style={styles.similarImage} />
+              <ResolvedImage uri={item.images[0]} style={styles.similarImage} />
               <View style={styles.similarBody}>
                 <View style={styles.similarTop}>
                   <Text style={styles.similarPrice}>{formatPrice(item.price)}</Text>
@@ -320,8 +403,11 @@ function InfoBlock({ title, header, items, muted = false }: { title: string; hea
 const styles = StyleSheet.create({
   scroller: { flex: 1 },
   scrollContent: { paddingBottom: 260 },
-  galleryWrap: { position: 'relative', marginHorizontal: -spacing.lg, marginTop: -spacing.lg, marginBottom: spacing.lg },
+  scrollContentWide: { width: '100%', maxWidth: 1180, alignSelf: 'center' },
+  galleryWrap: { position: 'relative', marginHorizontal: -spacing.lg, marginTop: -spacing.lg, marginBottom: spacing.lg, overflow: 'hidden' },
+  galleryWrapWide: { marginHorizontal: 0, borderRadius: radius.xl },
   hero: { width: '100%', height: 430, backgroundColor: colors.surface },
+  heroWide: { height: 620 },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(13,13,13,0.08)' },
   topControls: { position: 'absolute', top: spacing.lg, left: spacing.lg, right: spacing.lg, flexDirection: 'row', justifyContent: 'space-between' },
   topRight: { flexDirection: 'row', gap: spacing.sm },
@@ -331,6 +417,7 @@ const styles = StyleSheet.create({
   photoCounter: { borderRadius: radius.sm, backgroundColor: 'rgba(13,13,13,0.72)', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   photoCounterText: { color: colors.background, fontWeight: '900' },
   galleryNav: { position: 'absolute', right: spacing.lg, top: 210, gap: spacing.sm },
+  galleryNavWide: { top: 300 },
   galleryPill: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center' },
   galleryPillText: { color: colors.text, fontSize: 24, fontWeight: '900' },
   mainInfo: { gap: spacing.xs, marginBottom: spacing.lg },
@@ -360,6 +447,8 @@ const styles = StyleSheet.create({
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   videoRow: { gap: spacing.md },
   videoCard: { width: 140, height: 112, borderRadius: radius.md, backgroundColor: colors.black, padding: spacing.md, justifyContent: 'space-between' },
+  videoPlayerCard: { width: 340, height: 276, backgroundColor: colors.black },
+  videoPlayerCardWide: { width: 520, height: 376 },
   play: { color: colors.accentSoft, fontSize: 22, fontWeight: '900' },
   videoLabel: { color: colors.background, fontWeight: '900' },
   videoDuration: { color: colors.accentSoft, fontSize: 12, fontWeight: '800' },

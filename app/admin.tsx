@@ -1,27 +1,67 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { OwnerStatusBadge } from '@/components/OwnerStatusBadge';
 import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { isAdminAuthenticated, verifyAdminPin } from '@/data/adminStore';
-import { getAllSubmissions, statusLabels } from '@/data/ownerStore';
+import { createLocalMediaReference } from '@/data/localMediaStore';
+import { getAllSubmissions, normalizeSubmissionStatus, statusLabels } from '@/data/ownerStore';
 import { PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
-const statusOrder: SubmissionStatus[] = ['submitted', 'reviewing', 'changes_requested', 'needs_shooting', 'approved', 'published', 'rejected'];
+const statusOrder: SubmissionStatus[] = ['pending_moderation', 'changes_requested', 'published', 'rejected'];
+type AdminTab = SubmissionStatus | 'all';
+
+const adminTabs: Array<{ key: AdminTab; label: string }> = [
+  { key: 'pending_moderation', label: 'На модерации' },
+  { key: 'changes_requested', label: 'Нужно исправление' },
+  { key: 'published', label: 'Опубликовано' },
+  { key: 'rejected', label: 'Отклонено' },
+  { key: 'all', label: 'Все заявки' },
+];
+
+function normalizeAdminTab(tab?: string): AdminTab {
+  return tab === 'pending_moderation' || tab === 'changes_requested' || tab === 'published' || tab === 'rejected' || tab === 'all'
+    ? tab
+    : 'pending_moderation';
+}
 
 export default function AdminScreen() {
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [authenticated, setAuthenticated] = useState(() => isAdminAuthenticated());
-  const submissions = useMemo(() => getAllSubmissions(), [authenticated]);
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => normalizeAdminTab(tab));
+  const [submissions, setSubmissions] = useState(() => getAllSubmissions());
+  const visibleSubmissions =
+    activeTab === 'all' ? submissions : submissions.filter((item) => normalizeSubmissionStatus(item.status) === activeTab);
+
+  function countByTab(tab: AdminTab) {
+    return tab === 'all' ? submissions.length : submissions.filter((item) => normalizeSubmissionStatus(item.status) === tab).length;
+  }
+
+  useEffect(() => {
+    if (!authenticated) {
+      return undefined;
+    }
+
+    setSubmissions(getAllSubmissions());
+    const timer = setInterval(() => setSubmissions(getAllSubmissions()), 1000);
+    return () => clearInterval(timer);
+  }, [authenticated]);
+
+  useEffect(() => {
+    setActiveTab(normalizeAdminTab(tab));
+  }, [tab]);
 
   function unlock() {
     if (verifyAdminPin(pin)) {
       setAuthenticated(true);
+      setSubmissions(getAllSubmissions());
       setError('');
       return;
     }
@@ -54,18 +94,33 @@ export default function AdminScreen() {
 
       <View style={styles.stats}>
         {statusOrder.map((status) => (
-          <View key={status} style={styles.statCard}>
-            <Text style={styles.statNumber}>{submissions.filter((item) => item.status === status).length}</Text>
+          <Pressable key={status} style={styles.statCard} onPress={() => setActiveTab(status)}>
+            <Text style={styles.statNumber}>{submissions.filter((item) => normalizeSubmissionStatus(item.status) === status).length}</Text>
             <Text style={styles.statLabel}>{statusLabels[status]}</Text>
-          </View>
+          </Pressable>
         ))}
       </View>
 
-      <Section title="Все заявки" soft>
+      <View style={styles.tabs}>
+        {adminTabs.map((tab) => {
+          const selected = activeTab === tab.key;
+
+          return (
+            <Pressable key={tab.key} style={[styles.tab, selected && styles.tabSelected]} onPress={() => setActiveTab(tab.key)}>
+              <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{tab.label}</Text>
+              <Text style={[styles.tabCount, selected && styles.tabCountSelected]}>{countByTab(tab.key)}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Section title={adminTabs.find((tab) => tab.key === activeTab)?.label ?? 'Заявки'} soft>
         <View style={styles.list}>
-          {submissions.map((submission) => (
-            <SubmissionCard key={submission.id} submission={submission} />
-          ))}
+          {visibleSubmissions.length ? (
+            visibleSubmissions.map((submission) => <SubmissionCard key={submission.id} submission={submission} />)
+          ) : (
+            <Text style={styles.emptyText}>{activeTab === 'pending_moderation' ? 'Новых заявок пока нет.' : 'В этой категории пока пусто.'}</Text>
+          )}
         </View>
       </Section>
     </Screen>
@@ -73,13 +128,23 @@ export default function AdminScreen() {
 }
 
 function SubmissionCard({ submission }: { submission: PropertySubmission }) {
+  const cover =
+    submission.media.find((file) => file.type === 'photo' && file.category === 'apartment' && file.isCover && file.uploadStatus !== 'error') ??
+    submission.media.find((file) => file.type === 'photo' && file.category === 'apartment' && file.uploadStatus !== 'error') ??
+    submission.media.find((file) => file.type === 'photo' && file.uploadStatus !== 'error');
+  const photoUri = cover?.remoteUrl || cover?.localUri || cover?.uri || (cover?.id ? createLocalMediaReference(cover.id) : undefined);
+  const photoCount = submission.media.filter((file) => file.type === 'photo' && file.uploadStatus !== 'error').length;
+  const videoCount = submission.media.filter((file) => file.type === 'video' && file.uploadStatus !== 'error').length;
+
   return (
     <Pressable style={styles.card} onPress={() => router.push({ pathname: '/admin-submission', params: { id: submission.id } } as never)}>
       <View style={styles.cardTop}>
+        {photoUri ? <ResolvedImage uri={photoUri} style={styles.cardImage} /> : <View style={styles.cardImagePlaceholder}><Text style={styles.cardImageText}>GH</Text></View>}
         <View style={styles.cardText}>
           <Text style={styles.id}>{submission.id}</Text>
           <Text style={styles.title}>{submission.address.complexName || submission.address.street || 'Новая квартира'}</Text>
           <Text style={styles.meta}>{new Date(submission.createdAt).toLocaleDateString('ru-RU')} · {submission.ownerName} · {submission.ownerPhone}</Text>
+          <Text style={styles.meta}>{photoCount} фото · {videoCount} видео</Text>
         </View>
         <OwnerStatusBadge status={submission.status} />
       </View>
@@ -92,6 +157,7 @@ function SubmissionCard({ submission }: { submission: PropertySubmission }) {
       </View>
 
       <Text style={styles.price}>{submission.priceTerms.price ? `${Number(submission.priceTerms.price).toLocaleString('ru-RU')} ₸` : 'Цена не указана'}</Text>
+      <PrimaryButton title="Открыть заявку" variant="secondary" onPress={() => router.push({ pathname: '/admin-submission', params: { id: submission.id } } as never)} />
     </Pressable>
   );
 }
@@ -161,8 +227,59 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: spacing.xs,
   },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  tab: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  tabSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  tabText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  tabTextSelected: {
+    color: colors.accentDark,
+  },
+  tabCount: {
+    minWidth: 28,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+  },
+  tabCountSelected: {
+    backgroundColor: colors.card,
+    color: colors.accentDark,
+  },
   list: {
     gap: spacing.md,
+  },
+  emptyText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '700',
   },
   card: {
     borderWidth: 1,
@@ -177,6 +294,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: spacing.md,
+  },
+  cardImage: {
+    width: 96,
+    height: 76,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  cardImagePlaceholder: {
+    width: 96,
+    height: 76,
+    borderRadius: radius.md,
+    backgroundColor: colors.black,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardImageText: {
+    color: colors.accentSoft,
+    fontSize: 18,
+    fontWeight: '900',
   },
   cardText: {
     flex: 1,

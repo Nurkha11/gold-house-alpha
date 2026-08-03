@@ -21,11 +21,23 @@ const checks = [
   ],
   [
     'data/ownerTypes.ts',
-    ['changes_requested', 'adminComment?: string'],
+    ['pending_moderation', 'changes_requested', 'adminComment?: string', 'balconyType?: BalconyType', 'elevatorCount?: ElevatorCount', 'hasFreightElevator?: boolean | null', 'parkingType?: ParkingType'],
+  ],
+  [
+    'data/balconyTypes.ts',
+    ['BalconyType', 'balcony_and_loggia', 'normalizeBalconyType', 'getBalconyLabel'],
+  ],
+  [
+    'data/elevatorTypes.ts',
+    ['ElevatorCount', 'normalizeElevatorData', 'getElevatorLabel', 'hasFreightElevator'],
+  ],
+  [
+    'data/parkingTypes.ts',
+    ['ParkingType', 'normalizeParkingData', 'getParkingLabel', 'parkingSpaceIncludedInPrice'],
   ],
   [
     'data/ownerStore.ts',
-    ['getPublishedProperties', 'submissionToProperty', 'floorCategory', 'adminComment'],
+    ['getPublishedProperties', 'submissionToProperty', 'floorCategory', 'adminComment', 'normalizeSubmissionStatus', 'pending_moderation', 'normalizeBalconyType', 'normalizeElevatorData', 'normalizeParkingData'],
   ],
   [
     'app/admin.tsx',
@@ -33,7 +45,7 @@ const checks = [
   ],
   [
     'app/admin-submission.tsx',
-    ['updateSubmissionStatus', 'published', 'changes_requested', 'rejected'],
+    ['updateSubmissionStatus', 'published', 'changes_requested', 'rejected', 'Балкон / лоджия', 'Количество лифтов', 'Грузовой лифт', 'Собственное место', 'Входит в стоимость'],
   ],
   [
     'app/owner-dashboard.tsx',
@@ -41,7 +53,11 @@ const checks = [
   ],
   [
     'app/owner-submission.tsx',
-    ['saveSubmission', "status === 'submitted'", 'adminComment'],
+    ['saveSubmission', "status === 'pending_moderation'", 'adminComment', 'Балкон / лоджия', 'updateBalcony', 'Количество лифтов', 'Есть грузовой лифт?', 'updateElevatorCount', 'Парковка у дома', 'Есть собственное парковочное место?', 'updateParkingType'],
+  ],
+  [
+    'app/property/[id].tsx',
+    ['Балкон / лоджия', 'normalizeBalconyType', 'getElevatorLabel', 'getParkingLabel'],
   ],
 ];
 

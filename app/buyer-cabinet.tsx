@@ -1,9 +1,10 @@
 ﻿import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { formatPrice } from '@/components/BudgetSlider';
 import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
@@ -145,7 +146,7 @@ function MiniPropertyCard({
 
   return (
     <Pressable style={styles.propertyCard} onPress={() => openProperty(snapshot.propertyId)}>
-      {image ? <Image source={{ uri: image }} style={styles.cardImage} /> : <View style={styles.cardImagePlaceholder} />}
+      {image ? <ResolvedImage uri={image} style={styles.cardImage} /> : <View style={styles.cardImagePlaceholder} />}
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{snapshot.residentialComplex}</Text>
@@ -385,7 +386,7 @@ export default function BuyerCabinetScreen() {
         <View style={styles.list}>
           {recommendations.map(({ property, score }) => (
             <Pressable key={property.id} style={styles.recommendationCard} onPress={() => openProperty(property.id)}>
-              <Image source={{ uri: property.images[0] }} style={styles.recommendationImage} />
+              <ResolvedImage uri={property.images[0]} style={styles.recommendationImage} />
               <View style={styles.cardBody}>
                 <View style={styles.cardTop}>
                   <Text style={styles.cardTitle}>{property.complexName}</Text>

@@ -9,7 +9,9 @@ type OwnerStatusBadgeProps = {
 
 const statusTone: Record<SubmissionStatus, 'neutral' | 'gold' | 'green' | 'danger'> = {
   draft: 'neutral',
+  pending_moderation: 'gold',
   submitted: 'gold',
+  sent: 'gold',
   reviewing: 'gold',
   needs_shooting: 'gold',
   approved: 'green',

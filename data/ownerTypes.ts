@@ -1,8 +1,13 @@
 import { PropertyLocation, ResidentialComplexSuggestion } from '@/data/locationTypes';
+import type { BalconyType } from '@/data/balconyTypes';
+import type { ElevatorCount } from '@/data/elevatorTypes';
+import type { ParkingType } from '@/data/parkingTypes';
 
 export type SubmissionStatus =
   | 'draft'
+  | 'pending_moderation'
   | 'submitted'
+  | 'sent'
   | 'reviewing'
   | 'needs_shooting'
   | 'approved'
@@ -16,13 +21,54 @@ export type Owner = {
   phone: string;
 };
 
-export type MediaFile = {
+export type PropertyPhotoCategory = 'apartment' | 'yard' | 'entrance' | 'view';
+export type PropertyVideoCategory = 'apartment' | 'yard' | 'entrance' | 'owner';
+
+export type PropertyPhoto = {
   id: string;
-  type: 'photo' | 'video';
-  category: 'apartment' | 'yard' | 'entrance' | 'view' | 'owner';
+  type: 'photo';
+  category: PropertyPhotoCategory;
   name: string;
   uri?: string;
+  localUri: string;
+  remoteUrl: string | null;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+  width: number | null;
+  height: number | null;
+  order: number;
+  isCover: boolean;
+  uploadStatus: 'local' | 'uploading' | 'uploaded' | 'error';
+  uploadProgress: number;
+  errorMessage: string | null;
+  duplicateKey?: string;
+  createdAt: string;
 };
+
+export type PropertyVideo = {
+  id: string;
+  type: 'video';
+  category: PropertyVideoCategory;
+  name: string;
+  uri?: string;
+  localUri: string;
+  remoteUrl: string | null;
+  fileName: string;
+  mimeType: string;
+  fileSize: number | null;
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  thumbnailUri: string | null;
+  uploadStatus: 'local' | 'uploading' | 'uploaded' | 'error';
+  uploadProgress: number;
+  errorMessage: string | null;
+  duplicateKey?: string;
+  createdAt: string;
+};
+
+export type MediaFile = PropertyPhoto | PropertyVideo;
 
 export type PropertySubmission = {
   id: string;
@@ -54,8 +100,14 @@ export type PropertySubmission = {
     ceilingHeight: string;
     bathroom: string;
     balcony: string;
+    balconyType?: BalconyType;
     elevator: string;
+    elevatorCount?: ElevatorCount;
+    hasFreightElevator?: boolean | null;
     parking: string;
+    parkingType?: ParkingType;
+    hasPrivateParkingSpace?: boolean | null;
+    parkingSpaceIncludedInPrice?: boolean | null;
   };
   priceTerms: {
     price: string;

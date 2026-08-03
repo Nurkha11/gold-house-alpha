@@ -1,6 +1,12 @@
+import type { BalconyType } from '@/data/balconyTypes';
+import type { ElevatorCount } from '@/data/elevatorTypes';
+import type { ParkingType } from '@/data/parkingTypes';
+
 export type PropertyVideo = {
   label: string;
   duration: string;
+  uri?: string;
+  remoteUrl?: string | null;
 };
 
 export type ViewingTime = {
@@ -27,9 +33,17 @@ export type Property = {
   renovation: string;
   furniture: string;
   appliances: string;
-  balcony: string;
-  elevator: string;
-  parking: string;
+  balcony: string | boolean;
+  balconyType?: BalconyType;
+  elevator: string | boolean;
+  elevators?: number;
+  elevatorCount?: ElevatorCount;
+  hasFreightElevator?: boolean;
+  parking: string | boolean;
+  hasParking?: boolean;
+  parkingType?: ParkingType;
+  hasPrivateParkingSpace?: boolean;
+  parkingSpaceIncludedInPrice?: boolean | null;
   ceilingHeight: number;
   matchPercent: number;
   verified: boolean;

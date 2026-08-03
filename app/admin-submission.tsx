@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Image, Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+﻿import React, { useEffect, useState } from 'react';
+import { Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { OwnerStatusBadge } from '@/components/OwnerStatusBadge';
 import { PageHeader } from '@/components/PageHeader';
@@ -7,12 +7,16 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, spacing } from '@/constants/theme';
+import { getBalconyLabel, normalizeBalconyType } from '@/data/balconyTypes';
+import { getElevatorCountLabel, normalizeElevatorData } from '@/data/elevatorTypes';
+import { getParkingTypeLabel, normalizeParkingData } from '@/data/parkingTypes';
 import { isAdminAuthenticated } from '@/data/adminStore';
+import { loadLocalMediaBlobUrl } from '@/data/localMediaStore';
 import { getSubmissionById, updateSubmissionStatus } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
 const adminActions: Array<{ label: string; status: SubmissionStatus }> = [
-  { label: 'Одобрить и опубликовать', status: 'published' },
+  { label: 'Согласовано и опубликовать', status: 'published' },
   { label: 'Отклонить', status: 'rejected' },
 ];
 
@@ -46,6 +50,7 @@ export default function AdminSubmissionScreen() {
     const updated = updateSubmissionStatus(currentSubmission.id, status, comment);
     if (updated) {
       setSubmission({ ...updated });
+      router.replace({ pathname: '/admin', params: { tab: status } } as never);
     }
   }
 
@@ -62,7 +67,10 @@ export default function AdminSubmissionScreen() {
         <Text style={styles.price}>{currentSubmission.priceTerms.price ? `${Number(currentSubmission.priceTerms.price).toLocaleString('ru-RU')} ₸` : 'Цена не указана'}</Text>
       </View>
 
-      <Section title="Действия администратора" soft>
+
+      <SubmissionDetails submission={currentSubmission} />
+
+      <Section title="Итог модерации" soft>
         <View style={styles.actions}>
           {adminActions.map((action) => (
             <PrimaryButton
@@ -75,7 +83,7 @@ export default function AdminSubmissionScreen() {
           <TextInput
             value={adminComment}
             onChangeText={setAdminComment}
-            placeholder="Комментарий для собственника, например: Добавьте фотографии кухни"
+            placeholder="Комментарий для собственника, например: добавьте фотографии кухни"
             placeholderTextColor={colors.muted}
             multiline
             style={styles.commentInput}
@@ -85,15 +93,23 @@ export default function AdminSubmissionScreen() {
             variant="secondary"
             onPress={() => setStatus('changes_requested', adminComment || 'Нужно исправить данные объявления перед публикацией.')}
           />
+          {currentSubmission.status === 'published' ? (
+            <PrimaryButton
+              title="Открыть опубликованную карточку"
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/property/[id]', params: { id: `published-${currentSubmission.id}` } } as never)}
+            />
+          ) : null}
         </View>
       </Section>
-
-      <SubmissionDetails submission={currentSubmission} />
     </Screen>
   );
 }
 
 function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
+  const elevatorData = normalizeElevatorData(submission.characteristics);
+  const parkingData = normalizeParkingData(submission.characteristics);
+
   return (
     <>
       <Section title="Адрес">
@@ -114,9 +130,26 @@ function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
           <Info label="Материал" value={submission.characteristics.buildingMaterial || '-'} />
           <Info label="Потолки" value={submission.characteristics.ceilingHeight || '-'} />
           <Info label="Санузел" value={submission.characteristics.bathroom} />
-          <Info label="Балкон" value={submission.characteristics.balcony} />
-          <Info label="Лифт" value={submission.characteristics.elevator} />
-          <Info label="Парковка" value={submission.characteristics.parking} />
+          <Info label="Балкон / лоджия" value={getBalconyLabel(normalizeBalconyType(submission.characteristics.balconyType, submission.characteristics.balcony))} />
+          {elevatorData.elevatorCount === 0 ? (
+            <Info label="Лифт" value="Нет" />
+          ) : (
+            <>
+              <Info label="Количество лифтов" value={getElevatorCountLabel(elevatorData.elevatorCount)} />
+              <Info label="Грузовой лифт" value={elevatorData.hasFreightElevator ? 'Есть' : 'Нет'} />
+            </>
+          )}
+          {parkingData.parkingType === 'none' ? (
+            <Info label="Парковка" value="Нет" />
+          ) : (
+            <>
+              <Info label="Парковка" value={getParkingTypeLabel(parkingData.parkingType)} />
+              <Info label="Собственное место" value={parkingData.hasPrivateParkingSpace ? 'Есть' : 'Нет'} />
+              {parkingData.hasPrivateParkingSpace ? (
+                <Info label="Входит в стоимость" value={parkingData.parkingSpaceIncludedInPrice ? 'Да' : 'Нет, продается отдельно'} />
+              ) : null}
+            </>
+          )}
         </View>
       </Section>
 
@@ -146,7 +179,10 @@ function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
         <Info label="Почему продает" value={submission.ownerDescription.sellingReason || '-'} />
       </Section>
 
-      <MediaSection title="Фото" media={submission.media.filter((file) => file.type === 'photo')} />
+      <MediaSection title="Квартира" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'apartment')} />
+      <MediaSection title="Двор" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'yard')} />
+      <MediaSection title="Подъезд" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'entrance')} />
+      <MediaSection title="Вид из окна" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'view')} />
       <MediaSection title="Видео" media={submission.media.filter((file) => file.type === 'video' && file.category !== 'owner')} />
       <MediaSection title="Видео собственника" media={submission.media.filter((file) => file.type === 'video' && file.category === 'owner')} />
 
@@ -168,6 +204,85 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
+function mediaUri(file: MediaFile) {
+  if (file.type === 'photo') {
+    return file.localUri || file.remoteUrl || file.uri || '';
+  }
+
+  return file.localUri || file.remoteUrl || file.uri || '';
+}
+
+function renderMediaPreview(file: MediaFile, uri: string) {
+  if (!uri) {
+    return <View style={styles.videoBox}><Text style={styles.play}>{file.type === 'photo' ? 'Photo' : 'Video'}</Text></View>;
+  }
+
+  if (file.type === 'photo') {
+    if (Platform.OS === 'web') {
+      return React.createElement('img', {
+        src: uri,
+        alt: file.name,
+        style: {
+          width: '100%',
+          height: 120,
+          backgroundColor: colors.surface,
+          objectFit: 'cover',
+          display: 'block',
+        },
+      });
+    }
+
+    return <Image source={{ uri }} style={styles.mediaImage} />;
+  }
+
+  if (file.type === 'video' && Platform.OS === 'web') {
+    return React.createElement('video', {
+      src: uri,
+      controls: true,
+      preload: 'metadata',
+      style: {
+        width: '100%',
+        height: 120,
+        backgroundColor: colors.black,
+        objectFit: 'cover',
+      },
+    });
+  }
+
+  return <View style={styles.videoBox}><Text style={styles.play}>Video</Text></View>;
+}
+
+function MediaPreview({ file }: { file: MediaFile }) {
+  const uri = mediaUri(file);
+  const [resolvedUri, setResolvedUri] = useState(uri);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+
+    async function resolveMedia() {
+      if (Platform.OS !== 'web') return;
+      if (uri.startsWith('data:') || uri.startsWith('http')) return;
+
+      const storedUrl = await loadLocalMediaBlobUrl(file.id).catch(() => null);
+      if (active && storedUrl) {
+        objectUrl = storedUrl;
+        setResolvedUri(storedUrl);
+      }
+    }
+
+    setResolvedUri(uri);
+    resolveMedia();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, uri]);
+
+  return renderMediaPreview(file, resolvedUri);
+}
+
 function MediaSection({ title, media }: { title: string; media: MediaFile[] }) {
   return (
     <Section title={title}>
@@ -175,8 +290,10 @@ function MediaSection({ title, media }: { title: string; media: MediaFile[] }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
           {media.map((file) => (
             <View key={file.id} style={styles.mediaCard}>
-              {file.type === 'photo' && file.uri ? <Image source={{ uri: file.uri }} style={styles.mediaImage} /> : <View style={styles.videoBox}><Text style={styles.play}>Play</Text></View>}
+              <MediaPreview file={file} />
               <Text style={styles.mediaName}>{file.name}</Text>
+              {file.type === 'video' ? <Text style={styles.coverText}>{file.remoteUrl ? 'Storage' : 'Локально'}</Text> : null}
+              {file.type === 'photo' && file.isCover ? <Text style={styles.coverText}>Обложка</Text> : null}
             </View>
           ))}
         </ScrollView>
@@ -266,6 +383,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     padding: spacing.sm,
+  },
+  coverText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '900',
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   empty: {
     color: colors.muted,

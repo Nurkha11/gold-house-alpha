@@ -1,16 +1,20 @@
 import { useEffect } from 'react';
 import { ImageBackground, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useRootNavigationState } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { colors, spacing } from '@/constants/theme';
 import { getAutoBuyerProfile } from '@/data/buyerProfileStore';
 
 export default function WelcomeScreen() {
+  const rootNavigationState = useRootNavigationState();
+
   useEffect(() => {
+    if (!rootNavigationState?.key) return;
+
     const profile = getAutoBuyerProfile();
     if (profile) router.replace('/buyer-cabinet' as never);
-  }, []);
+  }, [rootNavigationState?.key]);
 
   return (
     <ImageBackground
@@ -26,6 +30,7 @@ export default function WelcomeScreen() {
           <View style={styles.actions}>
             <PrimaryButton title="Начать поиск" onPress={() => router.push('/buyer-profile' as never)} />
             <PrimaryButton title="Я собственник" variant="secondary" onPress={() => router.push('/owner-login' as never)} />
+            <PrimaryButton title="Кабинет администратора" variant="ghost" onPress={() => router.push('/admin' as never)} />
           </View>
         </View>
       </LinearGradient>

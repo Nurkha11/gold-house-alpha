@@ -1,6 +1,7 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
 import { Property } from '@/data/properties';
 
@@ -14,7 +15,7 @@ export function PropertyCard({ property, onPress }: PropertyCardProps) {
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
-      <Image source={{ uri: cover }} style={styles.image} />
+      <ResolvedImage uri={cover} style={styles.image} />
       <View style={styles.body}>
         <View style={styles.topRow}>
           <Text style={styles.price}>{formatPrice(property.price)}</Text>
