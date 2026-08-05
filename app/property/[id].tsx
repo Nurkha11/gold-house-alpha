@@ -1,12 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import PropertyMap from '@/components/PropertyMap';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
+import { getBalconyLabel, normalizeBalconyType } from '@/data/balconyTypes';
+import { getElevatorLabel } from '@/data/elevatorTypes';
+import { getParkingLabel } from '@/data/parkingTypes';
 import { getRatingCount, recordTrainingSignal } from '@/data/aiTrainingStore';
+import { getLocalMediaReferenceId, loadLocalMediaBlobUrl } from '@/data/localMediaStore';
 import { Property, properties } from '@/data/properties';
 import { getBuyerProperties, getBuyerPropertyById } from '@/data/propertyStore';
 import { getSelectedDistricts } from '@/data/aiTrainingStore';
@@ -44,18 +50,123 @@ function cleanText(value?: string) {
   return text;
 }
 
+const mediaCategoryConfig = [
+  { key: 'apartment', label: 'Квартира', videoLabel: 'Квартира' },
+  { key: 'yard', label: 'Двор', videoLabel: 'Двор' },
+  { key: 'entrance', label: 'Подъезд', videoLabel: 'Подъезд' },
+  { key: 'view', label: 'Вид из окна', videoLabel: null },
+  { key: 'owner', label: 'Собственник', videoLabel: 'Собственник' },
+] as const;
+
+function getPropertyImageGroups(property: Property) {
+  if (property.imageGroups?.length) {
+    return property.imageGroups;
+  }
+
+  return [
+    {
+      category: 'apartment' as const,
+      label: 'Квартира',
+      images: property.images?.length ? property.images : [property.imageUrl],
+    },
+  ];
+}
+
+function getVideoForCategory(property: Property, category: (typeof mediaCategoryConfig)[number]) {
+  if (!category.videoLabel) {
+    return undefined;
+  }
+
+  const fallbackIndexByKey = {
+    apartment: 0,
+    yard: 2,
+    entrance: 1,
+    view: -1,
+    owner: 3,
+  } as const;
+  const exact = property.videos.find((video) => video.label.toLowerCase() === category.videoLabel.toLowerCase());
+  return exact ?? property.videos[fallbackIndexByKey[category.key]];
+}
+
+function useResolvedMediaUris(uris: string[]) {
+  const [resolvedUris, setResolvedUris] = useState(uris);
+
+  useEffect(() => {
+    let mounted = true;
+    const objectUrls: string[] = [];
+
+    async function resolveUris() {
+      const resolved = await Promise.all(
+        uris.map(async (uri) => {
+          const mediaId = getLocalMediaReferenceId(uri);
+          if (!mediaId) {
+            return uri;
+          }
+
+          const blobUrl = await loadLocalMediaBlobUrl(mediaId).catch(() => null);
+          if (blobUrl) {
+            objectUrls.push(blobUrl);
+          }
+
+          return blobUrl ?? uri;
+        }),
+      );
+
+      if (mounted) {
+        setResolvedUris(resolved);
+      }
+    }
+
+    resolveUris();
+
+    return () => {
+      mounted = false;
+      if (typeof URL !== 'undefined') {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      }
+    };
+  }, [uris.join('|')]);
+
+  return resolvedUris;
+}
+
 export default function PropertyDetailsScreen() {
-  const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
+  const { id, source, targetRatingCount } = useLocalSearchParams<{ id: string; source?: string; targetRatingCount?: string }>();
+  const { width } = useWindowDimensions();
+  const isWideLayout = width >= 900;
   const property = getBuyerPropertyById(id) ?? getBuyerProperties()[0] ?? properties[0];
-  const gallery = property.images?.length ? property.images : [property.imageUrl];
+  const imageGroups = useMemo(() => getPropertyImageGroups(property), [property]);
+  const apartmentImageGroup = imageGroups.find((group) => group.category === 'apartment');
+  const gallery = apartmentImageGroup?.images.length ? apartmentImageGroup.images : property.images?.length ? property.images : [property.imageUrl];
+  const groupedPhotoUris = useMemo(() => imageGroups.flatMap((group) => group.images), [imageGroups]);
+  const resolvedGallery = useResolvedMediaUris(gallery);
+  const resolvedGroupedPhotoUris = useResolvedMediaUris(groupedPhotoUris);
+  const videoUris = property.videos.map((video) => video.uri).filter((uri): uri is string => Boolean(uri));
+  const resolvedVideoUris = useResolvedMediaUris(videoUris);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
   const [viewingVisible, setViewingVisible] = useState(false);
   const [viewingSent, setViewingSent] = useState(false);
   const [selectedDate, setSelectedDate] = useState('Завтра');
   const [selectedTime, setSelectedTime] = useState('18:30');
   const openedAt = useRef(Date.now());
   const similar = useMemo(() => similarTo(property), [property]);
-  const activePhoto = gallery[photoIndex];
+  const activePhoto = resolvedGallery[photoIndex] ?? gallery[photoIndex];
+  const resolvedVideoByUri = useMemo(() => {
+    const map = new Map<string, string>();
+    videoUris.forEach((uri, index) => {
+      map.set(uri, resolvedVideoUris[index] ?? uri);
+    });
+    return map;
+  }, [resolvedVideoUris, videoUris.join('|')]);
+  const resolvedPhotoByUri = useMemo(() => {
+    const map = new Map<string, string>();
+    groupedPhotoUris.forEach((uri, index) => {
+      map.set(uri, resolvedGroupedPhotoUris[index] ?? uri);
+    });
+    return map;
+  }, [resolvedGroupedPhotoUris, groupedPhotoUris.join('|')]);
+  const detailVideoHeight = isWideLayout ? 292 : 190;
 
   useEffect(() => {
     recordTrainingSignal(property.id, 'detail_view');
@@ -80,12 +191,14 @@ export default function PropertyDetailsScreen() {
 
   function rateFromDetails(type: 'like' | 'dislike') {
     recordTrainingSignal(property.id, type);
-    if (source === 'training' && getRatingCount() >= 10) {
+    const trainingTarget = targetRatingCount ? Number(targetRatingCount) : 5;
+
+    if (source === 'training' && getRatingCount() >= trainingTarget) {
       router.replace('/ai-analysis' as never);
       return;
     }
     if (source === 'training') {
-      router.replace('/swipe' as never);
+      router.replace({ pathname: '/swipe', params: { trainingMode: 'continue', targetRatingCount: String(trainingTarget) } } as never);
       return;
     }
     router.back();
@@ -93,10 +206,16 @@ export default function PropertyDetailsScreen() {
 
   return (
     <Screen scroll={false}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.galleryWrap}>
-        <Image source={{ uri: activePhoto }} style={styles.hero} />
-        <View style={styles.heroOverlay} />
+      <ScrollView
+        style={styles.scroller}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, isWideLayout && styles.scrollContentWide]}
+      >
+      <View style={[styles.galleryWrap, isWideLayout && styles.galleryWrapWide]}>
+        <Pressable onPress={() => setFullscreenPhoto(activePhoto)}>
+          <ResolvedImage uri={activePhoto} style={[styles.hero, isWideLayout && styles.heroWide]} resizeMode="cover" />
+        </Pressable>
+        <View style={styles.heroOverlay} pointerEvents="none" />
         <View style={styles.topControls}>
           <Pressable style={styles.iconButton} onPress={() => router.back()}>
             <Text style={styles.iconText}>‹</Text>
@@ -113,10 +232,10 @@ export default function PropertyDetailsScreen() {
         <View style={styles.heroBadges}>
           <Badge label="Gold Verified" />
           <View style={styles.photoCounter}>
-            <Text style={styles.photoCounterText}>{photoIndex + 1} / 24</Text>
+            <Text style={styles.photoCounterText}>{photoIndex + 1} / {gallery.length}</Text>
           </View>
         </View>
-        <View style={styles.galleryNav}>
+        <View style={[styles.galleryNav, isWideLayout && styles.galleryNavWide]}>
           <Pressable style={styles.galleryPill} onPress={prevPhoto}>
             <Text style={styles.galleryPillText}>‹</Text>
           </Pressable>
@@ -140,6 +259,9 @@ export default function PropertyDetailsScreen() {
         <QuickFact label="Год" value={String(property.year)} />
         <QuickFact label="Потолки" value={`${property.ceilingHeight} м`} />
         <QuickFact label="Ремонт" value={property.renovation} />
+        <QuickFact label="Балкон / лоджия" value={getBalconyLabel(normalizeBalconyType(property.balconyType, property.balcony))} />
+        <QuickFact label="Лифт" value={getElevatorLabel(property)} />
+        <QuickFact label="Парковка" value={getParkingLabel(property)} />
       </View>
 
       <View style={styles.recommendCard}>
@@ -162,16 +284,70 @@ export default function PropertyDetailsScreen() {
       <InfoBlock title="Индекс доверия" header="98 из 100" items={['Фото актуальны', 'Видео актуально', 'Собственник подтвержден', 'Геолокация подтверждена', 'Документы проверены']} />
 
       <View style={styles.block}>
-        <Text style={styles.blockTitle}>Видео и фото</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.videoRow}>
-          {['Квартира', 'Подъезд', 'Двор', 'Собственник'].map((label, index) => (
-            <View key={label} style={styles.videoCard}>
-              <Text style={styles.play}>▶</Text>
-              <Text style={styles.videoLabel}>{label}</Text>
-              <Text style={styles.videoDuration}>{property.videos[index]?.duration ?? '0:40'}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        <Text style={styles.blockTitle}>Фото и видео</Text>
+        <View style={styles.mediaCategories}>
+          {mediaCategoryConfig.map((category) => {
+            const images =
+              category.key === 'owner'
+                ? []
+                : imageGroups.find((group) => group.category === category.key)?.images ?? [];
+            const video = getVideoForCategory(property, category);
+            const resolvedVideoUri = video?.uri ? resolvedVideoByUri.get(video.uri) ?? video.remoteUrl ?? video.uri : undefined;
+            const hasMedia = images.length > 0 || Boolean(resolvedVideoUri);
+
+            if (!hasMedia) {
+              return null;
+            }
+
+            return (
+              <View key={category.key} style={styles.mediaCategory}>
+                <View style={styles.mediaCategoryHeader}>
+                  <Text style={styles.mediaCategoryTitle}>{category.label}</Text>
+                  <Text style={styles.mediaCategoryMeta}>
+                    {images.length ? `${images.length} фото` : 'Фото не загружены'}
+                    {resolvedVideoUri ? ' · 1 видео' : ''}
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
+                  {images.map((uri, imageIndex) => (
+                    <Pressable
+                      key={`${category.key}-${uri}-${imageIndex}`}
+                      style={styles.mediaPhotoButton}
+                      onPress={() => setFullscreenPhoto(resolvedPhotoByUri.get(uri) ?? uri)}
+                    >
+                      <ResolvedImage
+                        uri={resolvedPhotoByUri.get(uri) ?? uri}
+                        style={styles.mediaPhoto}
+                        resizeMode="cover"
+                      />
+                    </Pressable>
+                  ))}
+                  {resolvedVideoUri ? (
+                    <View style={[styles.videoCard, styles.videoPlayerCard, isWideLayout && styles.videoPlayerCardWide]}>
+                      {Platform.OS === 'web'
+                        ? React.createElement('video', {
+                            src: resolvedVideoUri,
+                            controls: true,
+                            preload: 'metadata',
+                            style: {
+                              width: '100%',
+                              height: detailVideoHeight,
+                              borderRadius: 14,
+                              backgroundColor: colors.black,
+                              objectFit: 'contain',
+                            },
+                          })
+                        : null}
+                      <Text style={styles.play}>▶</Text>
+                      <Text style={styles.videoLabel}>{video?.label ?? category.label}</Text>
+                      <Text style={styles.videoDuration}>{video?.duration ?? '0:40'}</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </View>
+            );
+          })}
+        </View>
       </View>
 
       <InfoBlock title="Цифровой паспорт" items={['Документы проверены', 'Геолокация подтверждена', 'Фото соответствуют', 'Видео актуально']} />
@@ -191,12 +367,23 @@ export default function PropertyDetailsScreen() {
 
       <View style={styles.block}>
         <Text style={styles.blockTitle}>На карте</Text>
-        <View style={styles.mapMock}>
-          <View style={styles.pin} />
-          <Text style={styles.mapTitle}>{property.complexName}</Text>
-          <Text style={styles.mapText}>{property.locationText}</Text>
-        </View>
-        <Pressable style={styles.mapButton} onPress={() => undefined}>
+        {property.coordinates ? (
+          <PropertyMap center={property.coordinates} zoom={16} height={220} />
+        ) : (
+          <View style={styles.mapMock}>
+            <View style={styles.pin} />
+            <Text style={styles.mapTitle}>{property.complexName}</Text>
+            <Text style={styles.mapText}>{property.locationText}</Text>
+          </View>
+        )}
+        <Pressable
+          style={styles.mapButton}
+          onPress={() => {
+            if (!property.coordinates) return;
+            const { lat, lng } = property.coordinates;
+            Linking.openURL(`https://yandex.ru/maps/?ll=${lng}%2C${lat}&z=16&pt=${lng},${lat}`);
+          }}
+        >
           <Text style={styles.mapButtonText}>↗ Открыть в картах</Text>
         </Pressable>
       </View>
@@ -206,7 +393,7 @@ export default function PropertyDetailsScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.similarRow}>
           {similar.map((item) => (
             <Pressable key={item.id} style={styles.similarCard} onPress={() => router.push({ pathname: '/property/[id]', params: { id: item.id } })}>
-              <Image source={{ uri: item.images[0] }} style={styles.similarImage} />
+              <ResolvedImage uri={item.images[0]} style={styles.similarImage} />
               <View style={styles.similarBody}>
                 <View style={styles.similarTop}>
                   <Text style={styles.similarPrice}>{formatPrice(item.price)}</Text>
@@ -275,6 +462,17 @@ export default function PropertyDetailsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal transparent visible={Boolean(fullscreenPhoto)} animationType="fade" onRequestClose={() => setFullscreenPhoto(null)}>
+        <View style={styles.photoModalBackdrop}>
+          <Pressable style={styles.photoModalClose} onPress={() => setFullscreenPhoto(null)}>
+            <Text style={styles.photoModalCloseText}>×</Text>
+          </Pressable>
+          {fullscreenPhoto ? (
+            <ResolvedImage uri={fullscreenPhoto} style={styles.photoModalImage} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -306,9 +504,13 @@ function InfoBlock({ title, header, items, muted = false }: { title: string; hea
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: spacing.xl },
-  galleryWrap: { position: 'relative', marginHorizontal: -spacing.lg, marginTop: -spacing.lg, marginBottom: spacing.lg },
+  scroller: { flex: 1 },
+  scrollContent: { paddingBottom: 260 },
+  scrollContentWide: { width: '100%', maxWidth: 1180, alignSelf: 'center' },
+  galleryWrap: { position: 'relative', marginHorizontal: -spacing.lg, marginTop: -spacing.lg, marginBottom: spacing.lg, overflow: 'hidden' },
+  galleryWrapWide: { marginHorizontal: 0, borderRadius: radius.xl },
   hero: { width: '100%', height: 430, backgroundColor: colors.surface },
+  heroWide: { height: 620 },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(13,13,13,0.08)' },
   topControls: { position: 'absolute', top: spacing.lg, left: spacing.lg, right: spacing.lg, flexDirection: 'row', justifyContent: 'space-between' },
   topRight: { flexDirection: 'row', gap: spacing.sm },
@@ -318,6 +520,7 @@ const styles = StyleSheet.create({
   photoCounter: { borderRadius: radius.sm, backgroundColor: 'rgba(13,13,13,0.72)', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   photoCounterText: { color: colors.background, fontWeight: '900' },
   galleryNav: { position: 'absolute', right: spacing.lg, top: 210, gap: spacing.sm },
+  galleryNavWide: { top: 300 },
   galleryPill: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center' },
   galleryPillText: { color: colors.text, fontSize: 24, fontWeight: '900' },
   mainInfo: { gap: spacing.xs, marginBottom: spacing.lg },
@@ -346,7 +549,17 @@ const styles = StyleSheet.create({
   description: { color: colors.text, fontSize: 16, lineHeight: 25 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   videoRow: { gap: spacing.md },
+  mediaCategories: { gap: spacing.lg },
+  mediaCategory: { gap: spacing.sm },
+  mediaCategoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: spacing.md },
+  mediaCategoryTitle: { color: colors.text, fontSize: 17, fontWeight: '900' },
+  mediaCategoryMeta: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  mediaRow: { gap: spacing.md },
+  mediaPhotoButton: { width: 190, height: 132, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface },
+  mediaPhoto: { width: 190, height: 132, borderRadius: radius.md, backgroundColor: colors.surface },
   videoCard: { width: 140, height: 112, borderRadius: radius.md, backgroundColor: colors.black, padding: spacing.md, justifyContent: 'space-between' },
+  videoPlayerCard: { width: 340, height: 276, backgroundColor: colors.black },
+  videoPlayerCardWide: { width: 520, height: 376 },
   play: { color: colors.accentSoft, fontSize: 22, fontWeight: '900' },
   videoLabel: { color: colors.background, fontWeight: '900' },
   videoDuration: { color: colors.accentSoft, fontSize: 12, fontWeight: '800' },
@@ -364,7 +577,7 @@ const styles = StyleSheet.create({
   similarPrice: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '900' },
   saveSmall: { color: colors.accentDark, fontSize: 20, fontWeight: '900' },
   similarMeta: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  bottomSpacer: { height: 230 },
+  bottomSpacer: { height: spacing.xl },
   bottomBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: 'rgba(255,255,255,0.97)', padding: spacing.sm, gap: spacing.sm, ...shadows.card },
   actionRow: { flexDirection: 'row', gap: spacing.sm },
   saveButton: { flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
@@ -383,4 +596,8 @@ const styles = StyleSheet.create({
   modalText: { color: colors.muted, fontSize: 16, lineHeight: 24 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   modalOption: { flexGrow: 1 },
+  photoModalBackdrop: { flex: 1, backgroundColor: 'rgba(13,13,13,0.94)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  photoModalImage: { width: '100%', height: '100%' },
+  photoModalClose: { position: 'absolute', top: spacing.xl, right: spacing.xl, zIndex: 3, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center' },
+  photoModalCloseText: { color: colors.text, fontSize: 30, lineHeight: 34, fontWeight: '900' },
 });

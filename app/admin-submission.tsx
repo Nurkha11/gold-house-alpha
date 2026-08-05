@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Image, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+﻿import React, { useEffect, useState } from 'react';
+import { Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { OwnerStatusBadge } from '@/components/OwnerStatusBadge';
 import { PageHeader } from '@/components/PageHeader';
@@ -7,29 +7,24 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, spacing } from '@/constants/theme';
-import { getActiveBuyerProfile } from '@/data/buyerProfileStore';
-import { getSubmissionById, updateSubmissionLocationReview, updateSubmissionStatus } from '@/data/ownerStore';
+import { getBalconyLabel, normalizeBalconyType } from '@/data/balconyTypes';
+import { getElevatorCountLabel, normalizeElevatorData } from '@/data/elevatorTypes';
+import { getParkingTypeLabel, normalizeParkingData } from '@/data/parkingTypes';
+import { isAdminAuthenticated } from '@/data/adminStore';
+import { loadLocalMediaBlobUrl } from '@/data/localMediaStore';
+import { getSubmissionById, updateSubmissionStatus } from '@/data/ownerStore';
 import { MediaFile, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
 
 const adminActions: Array<{ label: string; status: SubmissionStatus }> = [
-  { label: 'Взять в работу', status: 'reviewing' },
-  { label: 'Требуется съемка', status: 'needs_shooting' },
-  { label: 'Одобрить', status: 'approved' },
-  { label: 'Опубликовать', status: 'published' },
+  { label: 'Согласовано и опубликовать', status: 'published' },
   { label: 'Отклонить', status: 'rejected' },
 ];
-const ADMIN_PHONES = ['+77021734499'];
-
-function normalizePhone(phone?: string) {
-  const digits = String(phone ?? '').replace(/\D/g, '');
-  return digits.startsWith('7') ? `+${digits}` : `+7${digits}`;
-}
 
 export default function AdminSubmissionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [submission, setSubmission] = useState(() => getSubmissionById(id));
-  const currentUser = getActiveBuyerProfile();
-  const adminAllowed = Boolean(currentUser && ADMIN_PHONES.includes(normalizePhone(currentUser.phone)));
+  const [adminComment, setAdminComment] = useState('');
+  const adminAllowed = isAdminAuthenticated();
 
   if (!adminAllowed) {
     return (
@@ -51,17 +46,11 @@ export default function AdminSubmissionScreen() {
 
   const currentSubmission = submission;
 
-  function setStatus(status: SubmissionStatus) {
-    const updated = updateSubmissionStatus(currentSubmission.id, status);
+  function setStatus(status: SubmissionStatus, comment?: string) {
+    const updated = updateSubmissionStatus(currentSubmission.id, status, comment);
     if (updated) {
       setSubmission({ ...updated });
-    }
-  }
-
-  function reviewLocation(action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') {
-    const updated = updateSubmissionLocationReview(currentSubmission.id, action);
-    if (updated) {
-      setSubmission({ ...updated });
+      router.replace({ pathname: '/admin', params: { tab: status } } as never);
     }
   }
 
@@ -78,7 +67,10 @@ export default function AdminSubmissionScreen() {
         <Text style={styles.price}>{currentSubmission.priceTerms.price ? `${Number(currentSubmission.priceTerms.price).toLocaleString('ru-RU')} ₸` : 'Цена не указана'}</Text>
       </View>
 
-      <Section title="Действия администратора" soft>
+
+      <SubmissionDetails submission={currentSubmission} />
+
+      <Section title="Итог модерации" soft>
         <View style={styles.actions}>
           {adminActions.map((action) => (
             <PrimaryButton
@@ -88,23 +80,35 @@ export default function AdminSubmissionScreen() {
               onPress={() => setStatus(action.status)}
             />
           ))}
+          <TextInput
+            value={adminComment}
+            onChangeText={setAdminComment}
+            placeholder="Комментарий для собственника, например: добавьте фотографии кухни"
+            placeholderTextColor={colors.muted}
+            multiline
+            style={styles.commentInput}
+          />
+          <PrimaryButton
+            title="Запросить исправления"
+            variant="secondary"
+            onPress={() => setStatus('changes_requested', adminComment || 'Нужно исправить данные объявления перед публикацией.')}
+          />
+          {currentSubmission.status === 'published' ? (
+            <PrimaryButton
+              title="Открыть опубликованную карточку"
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/property/[id]', params: { id: `published-${currentSubmission.id}` } } as never)}
+            />
+          ) : null}
         </View>
       </Section>
-
-      <SubmissionDetails submission={currentSubmission} onReviewLocation={reviewLocation} />
     </Screen>
   );
 }
 
-function SubmissionDetails({
-  submission,
-  onReviewLocation,
-}: {
-  submission: PropertySubmission;
-  onReviewLocation: (action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') => void;
-}) {
-  const location = submission.address.location;
-  const newComplex = submission.address.newResidentialComplex;
+function SubmissionDetails({ submission }: { submission: PropertySubmission }) {
+  const elevatorData = normalizeElevatorData(submission.characteristics);
+  const parkingData = normalizeParkingData(submission.characteristics);
 
   return (
     <>
@@ -113,31 +117,6 @@ function SubmissionDetails({
         <Info label="Район" value={submission.address.district} />
         <Info label="ЖК / дом" value={submission.address.complexName || '-'} />
         <Info label="Адрес" value={submission.address.street || '-'} />
-      </Section>
-
-      <Section title="Проверка локации">
-        <View style={styles.grid}>
-          <Info label="Полный адрес" value={location?.fullAddress || 'Адрес не выбран через карту'} />
-          <Info label="Координаты" value={location ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}` : '-'} />
-          <Info label="Источник адреса" value={location?.source === 'yandex' ? 'Yandex' : 'Manual fallback'} />
-          <Info label="Источник района" value={location?.districtSource || '-'} />
-          <Info label="Дом подтвержден собственником" value={location?.locationConfirmed ? 'Да' : 'Нет'} />
-          <Info label="Публичная точность" value={location?.publicLocationPrecision === 'approximate' ? 'примерная для покупателя' : '-'} />
-          <Info label="Выбранный ЖК ID" value={submission.address.residentialComplexId || '-'} />
-          <Info label="Новый ЖК" value={newComplex ? `${newComplex.name} · ${newComplex.status}` : '-'} />
-          <Info label="Похожие ЖК" value={newComplex?.duplicateComplexIds.length ? newComplex.duplicateComplexIds.join(', ') : '-'} />
-          <Info label="Предупреждения" value={location?.locationWarnings?.length ? location.locationWarnings.join('\n') : 'Нет'} />
-        </View>
-        <View style={styles.actions}>
-          <PrimaryButton title="Подтвердить локацию" variant="secondary" onPress={() => onReviewLocation('confirm_location')} />
-          <PrimaryButton title="Ручная проверка адреса" variant="ghost" onPress={() => onReviewLocation('request_manual_check')} />
-          {newComplex ? (
-            <>
-              <PrimaryButton title="Одобрить новый ЖК" variant="secondary" onPress={() => onReviewLocation('approve_complex')} />
-              <PrimaryButton title="Объединить с существующим ЖК" variant="ghost" onPress={() => onReviewLocation('merge_complex')} />
-            </>
-          ) : null}
-        </View>
       </Section>
 
       <Section title="Характеристики">
@@ -151,9 +130,26 @@ function SubmissionDetails({
           <Info label="Материал" value={submission.characteristics.buildingMaterial || '-'} />
           <Info label="Потолки" value={submission.characteristics.ceilingHeight || '-'} />
           <Info label="Санузел" value={submission.characteristics.bathroom} />
-          <Info label="Балкон" value={submission.characteristics.balcony} />
-          <Info label="Лифт" value={submission.characteristics.elevator} />
-          <Info label="Парковка" value={submission.characteristics.parking} />
+          <Info label="Балкон / лоджия" value={getBalconyLabel(normalizeBalconyType(submission.characteristics.balconyType, submission.characteristics.balcony))} />
+          {elevatorData.elevatorCount === 0 ? (
+            <Info label="Лифт" value="Нет" />
+          ) : (
+            <>
+              <Info label="Количество лифтов" value={getElevatorCountLabel(elevatorData.elevatorCount)} />
+              <Info label="Грузовой лифт" value={elevatorData.hasFreightElevator ? 'Есть' : 'Нет'} />
+            </>
+          )}
+          {parkingData.parkingType === 'none' ? (
+            <Info label="Парковка" value="Нет" />
+          ) : (
+            <>
+              <Info label="Парковка" value={getParkingTypeLabel(parkingData.parkingType)} />
+              <Info label="Собственное место" value={parkingData.hasPrivateParkingSpace ? 'Есть' : 'Нет'} />
+              {parkingData.hasPrivateParkingSpace ? (
+                <Info label="Входит в стоимость" value={parkingData.parkingSpaceIncludedInPrice ? 'Да' : 'Нет, продается отдельно'} />
+              ) : null}
+            </>
+          )}
         </View>
       </Section>
 
@@ -183,7 +179,10 @@ function SubmissionDetails({
         <Info label="Почему продает" value={submission.ownerDescription.sellingReason || '-'} />
       </Section>
 
-      <MediaSection title="Фото" media={submission.media.filter((file) => file.type === 'photo')} />
+      <MediaSection title="Квартира" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'apartment')} />
+      <MediaSection title="Двор" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'yard')} />
+      <MediaSection title="Подъезд" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'entrance')} />
+      <MediaSection title="Вид из окна" media={submission.media.filter((file) => file.type === 'photo' && file.category === 'view')} />
       <MediaSection title="Видео" media={submission.media.filter((file) => file.type === 'video' && file.category !== 'owner')} />
       <MediaSection title="Видео собственника" media={submission.media.filter((file) => file.type === 'video' && file.category === 'owner')} />
 
@@ -205,6 +204,85 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
+function mediaUri(file: MediaFile) {
+  if (file.type === 'photo') {
+    return file.localUri || file.remoteUrl || file.uri || '';
+  }
+
+  return file.localUri || file.remoteUrl || file.uri || '';
+}
+
+function renderMediaPreview(file: MediaFile, uri: string) {
+  if (!uri) {
+    return <View style={styles.videoBox}><Text style={styles.play}>{file.type === 'photo' ? 'Photo' : 'Video'}</Text></View>;
+  }
+
+  if (file.type === 'photo') {
+    if (Platform.OS === 'web') {
+      return React.createElement('img', {
+        src: uri,
+        alt: file.name,
+        style: {
+          width: '100%',
+          height: 120,
+          backgroundColor: colors.surface,
+          objectFit: 'cover',
+          display: 'block',
+        },
+      });
+    }
+
+    return <Image source={{ uri }} style={styles.mediaImage} />;
+  }
+
+  if (file.type === 'video' && Platform.OS === 'web') {
+    return React.createElement('video', {
+      src: uri,
+      controls: true,
+      preload: 'metadata',
+      style: {
+        width: '100%',
+        height: 120,
+        backgroundColor: colors.black,
+        objectFit: 'cover',
+      },
+    });
+  }
+
+  return <View style={styles.videoBox}><Text style={styles.play}>Video</Text></View>;
+}
+
+function MediaPreview({ file }: { file: MediaFile }) {
+  const uri = mediaUri(file);
+  const [resolvedUri, setResolvedUri] = useState(uri);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+
+    async function resolveMedia() {
+      if (Platform.OS !== 'web') return;
+      if (uri.startsWith('data:') || uri.startsWith('http')) return;
+
+      const storedUrl = await loadLocalMediaBlobUrl(file.id).catch(() => null);
+      if (active && storedUrl) {
+        objectUrl = storedUrl;
+        setResolvedUri(storedUrl);
+      }
+    }
+
+    setResolvedUri(uri);
+    resolveMedia();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file.id, uri]);
+
+  return renderMediaPreview(file, resolvedUri);
+}
+
 function MediaSection({ title, media }: { title: string; media: MediaFile[] }) {
   return (
     <Section title={title}>
@@ -212,8 +290,10 @@ function MediaSection({ title, media }: { title: string; media: MediaFile[] }) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
           {media.map((file) => (
             <View key={file.id} style={styles.mediaCard}>
-              {file.type === 'photo' && file.uri ? <Image source={{ uri: file.uri }} style={styles.mediaImage} /> : <View style={styles.videoBox}><Text style={styles.play}>Play</Text></View>}
+              <MediaPreview file={file} />
               <Text style={styles.mediaName}>{file.name}</Text>
+              {file.type === 'video' ? <Text style={styles.coverText}>{file.remoteUrl ? 'Storage' : 'Локально'}</Text> : null}
+              {file.type === 'photo' && file.isCover ? <Text style={styles.coverText}>Обложка</Text> : null}
             </View>
           ))}
         </ScrollView>
@@ -236,6 +316,19 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  commentInput: {
+    minHeight: 112,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '700',
+    padding: spacing.md,
+    textAlignVertical: 'top',
   },
   grid: {
     gap: spacing.sm,
@@ -290,6 +383,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     padding: spacing.sm,
+  },
+  coverText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '900',
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   empty: {
     color: colors.muted,

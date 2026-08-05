@@ -210,10 +210,10 @@ function budgetScore(property: Property) {
 
 function renovationGroup(value?: string) {
   const renovation = String(value ?? '').toLowerCase();
-  if (renovation.includes('чернов')) return 'Черновая планировка';
-  if (renovation.includes('стар')) return 'Старый ремонт';
-  if (renovation.includes('евро')) return 'Евроремонт';
-  if (renovation.includes('хорош')) return 'Хороший ремонт';
+  if (renovation.includes('чернов') || renovation.includes('С‡РµСЂРЅРѕРІ')) return 'Черновая отделка';
+  if (renovation.includes('стар') || renovation.includes('СЃС‚Р°СЂ')) return 'Старый ремонт';
+  if (renovation.includes('евро') || renovation.includes('РµРІСЂРѕ')) return 'Евроремонт';
+  if (renovation.includes('хорош') || renovation.includes('С…РѕСЂРѕС€')) return 'Хороший ремонт';
   return value ?? 'Не указан';
 }
 
@@ -312,8 +312,8 @@ export function scorePropertyForTraining(property: Property) {
   if (floorMatches(property, getSelectedFloorCategories())) score += 14;
   if (likedDistricts.has(property.district)) score += 6;
   if (likedComplexes.has(property.complexName)) score += 6;
-  if (likedRenovations.has(propertyRenovation)) score += 12;
-  if (dislikedRenovations.has(propertyRenovation)) score -= 14;
+  if (likedRenovations.has(propertyRenovation)) score += 22;
+  if (dislikedRenovations.has(propertyRenovation)) score -= 18;
   if (likedAreaGroups.has(propertyAreaGroup)) score += 10;
   if (dislikedAreaGroups.has(propertyAreaGroup)) score -= 10;
   if (likedPriceGroups.has(propertyPriceGroup)) score += 10;
@@ -325,22 +325,13 @@ export function scorePropertyForTraining(property: Property) {
   return score;
 }
 
-export function getTrainingStream(limit = 10) {
+export function getTrainingStream(limit = 5) {
   const filtered = getHardFilteredProperties().sort((a, b) => a.id.localeCompare(b.id));
 
-  if (!filtered.length) {
-    return [];
-  }
-
-  const stream: Property[] = [];
-  while (stream.length < Math.max(limit, 10)) {
-    stream.push(...filtered);
-  }
-
-  return stream.slice(0, Math.max(limit, 10));
+  return filtered.slice(0, limit);
 }
 
-export function getPersonalRecommendations() {
+export function getPersonalRecommendations(limit = 3) {
   const likedProperties = signalProperties(['like', 'long_detail_view']);
   const likedRenovations = new Set(likedProperties.map((item) => renovationGroup(item.renovation)));
   const likedAreas = likedProperties.map((item) => item.area);
@@ -351,29 +342,32 @@ export function getPersonalRecommendations() {
 
   return getHardFilteredProperties()
     .sort((a, b) => scorePropertyForTraining(b) - scorePropertyForTraining(a))
-    .slice(0, 3)
+    .slice(0, limit)
     .map((property) => {
       const propertyRenovation = renovationGroup(property.renovation);
       const score = Math.max(78, Math.min(98, Math.round(scorePropertyForTraining(property))));
-      const likedSimilar = signals.some((signal) => {
-        const likedProperty = getBuyerProperties().find((item) => item.id === signal.propertyId);
-        return (
-          signal.type === 'like' &&
-          (likedProperty?.district === property.district ||
-            likedProperty?.complexName === property.complexName ||
-            renovationGroup(likedProperty?.renovation) === propertyRenovation ||
-            areaGroup(likedProperty?.area ?? 0) === areaGroup(property.area) ||
-            priceGroup(likedProperty?.price ?? 0) === priceGroup(property.price))
-        );
-      });
+      const likedSignalReason = likedProperties.reduce<string | null>((reason, likedProperty) => {
+        if (reason || likedProperty.id === property.id) return reason;
+        if (renovationGroup(likedProperty.renovation) === propertyRenovation) {
+          return `Вы лайкнули квартиру с таким же ремонтом: ${propertyRenovation}`;
+        }
+        if (likedProperty.complexName === property.complexName) {
+          return `Похожа на лайкнутую квартиру в ЖК ${property.complexName}`;
+        }
+        if (areaGroup(likedProperty.area) === areaGroup(property.area)) {
+          return 'Похожа по площади на квартиру, которая вам понравилась';
+        }
+        if (priceGroup(likedProperty.price) === priceGroup(property.price)) {
+          return 'Похожа по цене на квартиру, которая вам понравилась';
+        }
+        return null;
+      }, null);
 
       const reasons = [
-        likedSimilar
-          ? 'Похожа на квартиры, которым вы поставили лайк'
-          : hasBudgetPreference()
-            ? 'Соответствует выбранному району и учитывает ваш бюджет'
-            : 'Соответствует выбранному району',
-        likedRenovations.has(propertyRenovation) ? `AI заметил интерес к формату: ${propertyRenovation}` : 'Ремонт учитывается как обучающий фактор',
+        likedSignalReason ?? (hasBudgetPreference()
+          ? 'Соответствует выбранному району и учитывает ваш бюджет'
+          : 'Соответствует выбранному району'),
+        likedRenovations.has(propertyRenovation) ? `AI заметил интерес к ремонту: ${propertyRenovation}` : 'Ремонт учитывается как обучающий фактор',
         averageLikedArea ? `Вы предпочитаете квартиры площадью около ${averageLikedArea} м²` : 'Площадь учитывается как обучающий фактор',
         largeAreaLikes >= 2 ? 'Вам чаще нравятся квартиры с большей площадью' : affordableLikes >= 2 ? 'Вы чаще выбираете доступные квартиры до 20 млн ₸' : 'Цена и площадь учтены в Match Score',
         floorMatches(property, getSelectedFloorCategories()) ? 'Подходит под ваши предпочтения по этажу' : 'Ближайший вариант с учетом остальных сигналов',

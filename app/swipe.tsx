@@ -1,49 +1,71 @@
 import { useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Badge } from '@/components/Badge';
 import { formatPrice } from '@/components/BudgetSlider';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
-import { getRatedPropertyIds, getRatingCount, getTrainingStream, recordTrainingSignal, scorePropertyForTraining } from '@/data/aiTrainingStore';
+import { getHardFilteredProperties, getRatingCount, getTrainingStream, recordTrainingSignal, scorePropertyForTraining } from '@/data/aiTrainingStore';
 import { Property } from '@/data/properties';
 
-const minimumRatings = 10;
+const minimumRatings = 5;
 
 function matchPercent(property: Property) {
   return Math.max(78, Math.min(98, Math.round(scorePropertyForTraining(property))));
 }
 
 export default function SwipeScreen() {
-  const params = useLocalSearchParams<{ selectedDistricts?: string; district?: string; rooms?: string }>();
-  const [ratedIds, setRatedIds] = useState<string[]>(() => getRatedPropertyIds());
+  const params = useLocalSearchParams<{ selectedDistricts?: string; district?: string; rooms?: string; trainingMode?: string; targetRatingCount?: string }>();
+  const { width } = useWindowDimensions();
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
+  const [initialRatingCount] = useState(() => getRatingCount());
+  const currentSessionRatedCount = Math.max(ratingCount - initialRatingCount, 0);
+  const availableCount = useMemo(() => getHardFilteredProperties().length, []);
+  const effectiveMinimumRatings = Math.max(1, Math.min(minimumRatings, availableCount));
+  const [targetRatingCount] = useState(() => {
+    const currentCount = getRatingCount();
+    if (params.targetRatingCount) return Number(params.targetRatingCount);
+    return currentCount + effectiveMinimumRatings;
+  });
 
-  const stream = useMemo(() => getTrainingStream(minimumRatings), []);
-  const currentIndex = Math.min(ratedIds.length, stream.length - 1);
+  const sessionTargetCount = Math.max(0, targetRatingCount - (ratingCount - currentSessionRatedCount));
+  const streamLimit = Math.max(effectiveMinimumRatings, sessionTargetCount);
+  const stream = useMemo(() => getTrainingStream(streamLimit), [streamLimit]);
+  const currentIndex = currentSessionRatedCount;
   const current = stream[currentIndex];
-  const remaining = Math.max(minimumRatings - ratingCount, 0);
+  const hasExhaustedCurrentStream = stream.length > 0 && currentSessionRatedCount >= stream.length;
+  const remaining = Math.max(Math.min(targetRatingCount - ratingCount, stream.length - currentSessionRatedCount), 0);
   const selectedDistricts = String(params.selectedDistricts ?? params.district ?? '')
     .split(',')
     .map((district) => district.trim())
     .filter(Boolean);
-  const emptyText =
-    selectedDistricts.length === 1 && selectedDistricts[0] === 'Бостандыкский' && params.rooms === '2'
-      ? 'В Бостандыкском районе пока нет двухкомнатных квартир по выбранным критериям. Попробуйте выбрать другой район или изменить комнатность.'
-      : 'Попробуйте выбрать другой район, комнатность или предпочтение по этажу.';
+  const selectedDistrictLabel = selectedDistricts.length ? selectedDistricts.join(', ') : 'выбранном районе';
+  const emptyText = `В районе ${selectedDistrictLabel} по выбранным критериям квартир пока нет. Можете вернуться назад и выбрать другой район, комнатность или этаж.`;
+  const isWideLayout = width >= 900;
 
   function rate(property: Property, type: 'like' | 'dislike') {
     recordTrainingSignal(property.id, type);
     const nextCount = ratingCount + 1;
+    const nextSessionRatedCount = currentSessionRatedCount + 1;
+    const ratedAllAvailableBeforeFive = stream.length < minimumRatings && nextSessionRatedCount >= stream.length;
     setRatingCount(nextCount);
-    setRatedIds((ids) => [...ids, property.id]);
 
-    if (nextCount >= minimumRatings) {
+    if (nextCount >= targetRatingCount && !ratedAllAvailableBeforeFive) {
       router.replace({ pathname: '/ai-analysis', params } as never);
     }
+  }
+
+  function goToNextStep() {
+    if (ratingCount > 0) {
+      router.replace({ pathname: '/ai-analysis', params } as never);
+      return;
+    }
+
+    router.replace({ pathname: '/personal-recommendations', params } as never);
   }
 
   return (
@@ -52,26 +74,43 @@ export default function SwipeScreen() {
       <PageHeader
         eyebrow="AI изучает вкус"
         title="Оцените несколько квартир."
-        subtitle={remaining > 0 ? `Осталось оценить: ${remaining}. После этого AI соберет персональные рекомендации.` : 'Достаточно сигналов для анализа.'}
+        subtitle={
+          availableCount <= 1
+            ? 'В выбранных критериях найден один вариант. Оцените его, и AI сразу покажет следующий шаг.'
+            : remaining > 0
+              ? `Осталось оценить: ${remaining}. После этого AI соберет персональные рекомендации.`
+              : 'Достаточно сигналов для анализа.'
+        }
       />
 
       <View style={styles.counter}>
-        <Text style={styles.counterText}>{Math.min(ratingCount, minimumRatings)} / {minimumRatings} оценок</Text>
+        <Text style={styles.counterText}>{Math.min(currentSessionRatedCount, stream.length)} / {stream.length || effectiveMinimumRatings} оценок</Text>
       </View>
 
       {current ? (
         <TrainingCard
           property={current}
           match={matchPercent(current)}
+          isWideLayout={isWideLayout}
           onLike={() => rate(current, 'like')}
           onDislike={() => rate(current, 'dislike')}
-          onDetails={() => router.push({ pathname: '/property/[id]', params: { id: current.id, source: 'training' } })}
+          onDetails={() => router.push({ pathname: '/property/[id]', params: { id: current.id, source: 'training', targetRatingCount: String(targetRatingCount) } })}
         />
+      ) : hasExhaustedCurrentStream ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Вариантов больше нет.</Text>
+          <Text style={styles.emptyText}>
+            В районе {selectedDistrictLabel} по выбранным критериям мы показали все доступные квартиры. Можно перейти к анализу или изменить район, комнатность и этажи.
+          </Text>
+          <PrimaryButton title="Перейти к анализу AI" onPress={goToNextStep} />
+          <PrimaryButton title="Начать новый поиск" variant="secondary" onPress={() => router.replace('/' as never)} />
+          <PrimaryButton title="Вернуться к выбору района" variant="ghost" onPress={() => router.replace({ pathname: '/district', params } as never)} />
+        </View>
       ) : (
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>По этим фильтрам нет квартир.</Text>
+          <Text style={styles.emptyTitle}>Квартир пока нет.</Text>
           <Text style={styles.emptyText}>{emptyText}</Text>
-          <PrimaryButton title="Изменить фильтры" onPress={() => router.replace('/district' as never)} />
+          <PrimaryButton title="Вернуться к выбору района" onPress={() => router.replace({ pathname: '/district', params } as never)} />
         </View>
       )}
     </Screen>
@@ -81,20 +120,24 @@ export default function SwipeScreen() {
 function TrainingCard({
   property,
   match,
+  isWideLayout,
   onLike,
   onDislike,
   onDetails,
 }: {
   property: Property;
   match: number;
+  isWideLayout: boolean;
   onLike: () => void;
   onDislike: () => void;
   onDetails: () => void;
 }) {
+  const actionButtonStyle = isWideLayout ? styles.actionButtonWide : styles.actionButton;
+
   return (
-    <View style={styles.card}>
-      <Image source={{ uri: property.images[0] }} style={styles.image} />
-      <View style={styles.body}>
+    <View style={[styles.card, isWideLayout && styles.cardWide]}>
+      <ResolvedImage uri={property.images[0]} style={[styles.image, isWideLayout && styles.imageWide]} />
+      <View style={[styles.body, isWideLayout && styles.bodyWide]}>
         <View style={styles.badges}>
           <Badge label="Gold Verified" />
           <Badge label={`${match}% Match`} />
@@ -104,10 +147,10 @@ function TrainingCard({
         <Text style={styles.meta}>
           {property.district} • {property.complexName} • {property.rooms} комн. • {property.area} м² • {property.floor}/{property.totalFloors} этаж
         </Text>
-        <View style={styles.actions}>
-          <PrimaryButton title="Нравится" onPress={onLike} style={styles.actionButton} />
-          <PrimaryButton title="Не нравится" variant="ghost" onPress={onDislike} style={styles.actionButton} />
-          <PrimaryButton title="Подробнее" variant="secondary" onPress={onDetails} style={styles.actionButton} />
+        <View style={[styles.actions, isWideLayout && styles.actionsWide]}>
+          <PrimaryButton title="Нравится" onPress={onLike} style={actionButtonStyle} />
+          <PrimaryButton title="Не нравится" variant="ghost" onPress={onDislike} style={actionButtonStyle} />
+          <PrimaryButton title="Подробнее" variant="secondary" onPress={onDetails} style={actionButtonStyle} />
         </View>
       </View>
     </View>
@@ -129,6 +172,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   card: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 1180,
     backgroundColor: colors.card,
     borderRadius: radius.xl,
     borderWidth: 1,
@@ -136,14 +182,27 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadows.card,
   },
+  cardWide: {
+    flexDirection: 'row',
+    minHeight: 520,
+  },
   image: {
     width: '100%',
     height: 310,
     backgroundColor: colors.surface,
   },
+  imageWide: {
+    width: '58%',
+    height: 520,
+  },
   body: {
     padding: spacing.lg,
     gap: spacing.md,
+  },
+  bodyWide: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
   },
   badges: {
     flexDirection: 'row',
@@ -170,8 +229,17 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
   },
+  actionsWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
   actionButton: {
     width: '100%',
+  },
+  actionButtonWide: {
+    flexBasis: '31%',
+    flexGrow: 1,
+    width: undefined,
   },
   empty: {
     borderRadius: radius.xl,

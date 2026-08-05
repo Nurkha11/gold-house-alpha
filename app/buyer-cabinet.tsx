@@ -1,9 +1,10 @@
 ﻿import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { formatPrice } from '@/components/BudgetSlider';
 import { PageHeader } from '@/components/PageHeader';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { Section } from '@/components/Section';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
@@ -15,6 +16,7 @@ import {
   getActiveBuyerPreferences,
   getLastBuyerProfile,
   pauseBuyerAutoRestore,
+  removeBuyerFavorite,
   signOutBuyerProfile,
 } from '@/data/buyerProfileStore';
 import { Property } from '@/data/properties';
@@ -128,13 +130,23 @@ function openProperty(propertyId: string) {
   router.push({ pathname: '/property/[id]', params: { id: propertyId, source: 'profile' } });
 }
 
-function MiniPropertyCard({ item, status }: { item: CabinetItem; status?: string }) {
+function MiniPropertyCard({
+  item,
+  status,
+  actionLabel,
+  onAction,
+}: {
+  item: CabinetItem;
+  status?: string;
+  actionLabel?: string;
+  onAction?: (propertyId: string) => void;
+}) {
   const { property, snapshot } = item;
   const image = property?.images?.[0] ?? property?.imageUrl;
 
   return (
     <Pressable style={styles.propertyCard} onPress={() => openProperty(snapshot.propertyId)}>
-      {image ? <Image source={{ uri: image }} style={styles.cardImage} /> : <View style={styles.cardImagePlaceholder} />}
+      {image ? <ResolvedImage uri={image} style={styles.cardImage} /> : <View style={styles.cardImagePlaceholder} />}
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{snapshot.residentialComplex}</Text>
@@ -146,12 +158,29 @@ function MiniPropertyCard({ item, status }: { item: CabinetItem; status?: string
         </Text>
         <Text style={styles.cardMeta}>{snapshot.repair}</Text>
         {status ? <Text style={styles.status}>{status}</Text> : null}
+        {actionLabel && onAction ? (
+          <Pressable style={styles.cardAction} onPress={() => onAction(snapshot.propertyId)}>
+            <Text style={styles.cardActionText}>{actionLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </Pressable>
   );
 }
 
-function PropertyCardList({ empty, events, status }: { empty: string; events: BuyerActionEvent[]; status?: string }) {
+function PropertyCardList({
+  empty,
+  events,
+  status,
+  actionLabel,
+  onAction,
+}: {
+  empty: string;
+  events: BuyerActionEvent[];
+  status?: string;
+  actionLabel?: string;
+  onAction?: (propertyId: string) => void;
+}) {
   const items = toCabinetItems(events).slice(0, 4);
 
   if (!items.length) {
@@ -161,7 +190,7 @@ function PropertyCardList({ empty, events, status }: { empty: string; events: Bu
   return (
     <View style={styles.list}>
       {items.map((item) => (
-        <MiniPropertyCard key={item.event.id} item={item} status={status} />
+        <MiniPropertyCard key={item.event.id} item={item} status={status} actionLabel={actionLabel} onAction={onAction} />
       ))}
     </View>
   );
@@ -169,12 +198,14 @@ function PropertyCardList({ empty, events, status }: { empty: string; events: Bu
 
 export default function BuyerCabinetScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [, setRefreshKey] = useState(0);
   const profile = getLastBuyerProfile();
   const events = getActiveBuyerEvents();
   const preferences = getActiveBuyerPreferences();
   const groups = useMemo(
     () => ({
       favorites: events.filter((event) => event.type === 'LIKE' || event.type === 'SAVE'),
+      savedRecommendations: events.filter((event) => event.type === 'FINAL_RECOMMENDATION'),
       views: events.filter((event) => event.type === 'VIEW_DETAILS' || event.type === 'LONG_VIEW_DETAILS'),
       viewings: events.filter((event) => event.type === 'SCHEDULE_VIEWING'),
       calls: events.filter((event) => event.type === 'CALL_OWNER'),
@@ -242,6 +273,11 @@ export default function BuyerCabinetScreen() {
     setMenuOpen(false);
     signOutBuyerProfile();
     router.replace('/' as never);
+  }
+
+  function removeFavorite(propertyId: string) {
+    removeBuyerFavorite(propertyId);
+    setRefreshKey((value) => value + 1);
   }
 
   if (!profile) {
@@ -326,7 +362,11 @@ export default function BuyerCabinetScreen() {
       </View>
 
       <Section title={`❤️ Избранные квартиры (${toCabinetItems(groups.favorites).length})`}>
-        <PropertyCardList events={groups.favorites} empty="Пока нет избранных квартир." />
+        <PropertyCardList events={groups.favorites} empty="Пока нет избранных квартир." actionLabel="Убрать из избранного" onAction={removeFavorite} />
+      </Section>
+
+      <Section title={`Мои рекомендации (${toCabinetItems(groups.savedRecommendations).length})`}>
+        <PropertyCardList events={groups.savedRecommendations} empty="Сохраненные рекомендации появятся после AI-анализа." status="AI рекомендовал" />
       </Section>
 
       <Section title={`👀 История просмотров (${toCabinetItems(groups.views).length})`}>
@@ -346,7 +386,7 @@ export default function BuyerCabinetScreen() {
         <View style={styles.list}>
           {recommendations.map(({ property, score }) => (
             <Pressable key={property.id} style={styles.recommendationCard} onPress={() => openProperty(property.id)}>
-              <Image source={{ uri: property.images[0] }} style={styles.recommendationImage} />
+              <ResolvedImage uri={property.images[0]} style={styles.recommendationImage} />
               <View style={styles.cardBody}>
                 <View style={styles.cardTop}>
                   <Text style={styles.cardTitle}>{property.complexName}</Text>
@@ -596,6 +636,21 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 999,
     backgroundColor: colors.accentSoft,
+    color: colors.accentDark,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  cardAction: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  cardActionText: {
     color: colors.accentDark,
     fontSize: 12,
     fontWeight: '900',

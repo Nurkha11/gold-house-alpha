@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { Screen } from '@/components/Screen';
 import { colors, radius, spacing } from '@/constants/theme';
 import { FloorPreference, normalizeFloorCategories, startTrainingSession } from '@/data/aiTrainingStore';
+import { defaultBuyerDistrict } from '@/data/districts';
 
 export default function AiLoadingScreen() {
   const params = useLocalSearchParams<{
@@ -24,8 +25,8 @@ export default function AiLoadingScreen() {
   useEffect(() => {
     startTrainingSession({
       city: params.city ?? 'Алматы',
-      district: params.district ?? 'Наурызбайский',
-      selectedDistricts: params.selectedDistricts ?? params.district ?? 'Наурызбайский',
+      district: params.district ?? defaultBuyerDistrict,
+      selectedDistricts: params.selectedDistricts ?? params.district ?? defaultBuyerDistrict,
       rooms: params.rooms ?? '1',
       budgetMin: params.budgetMin ? Number(params.budgetMin) : undefined,
       budgetMax: params.budgetMax ? Number(params.budgetMax) : undefined,
@@ -54,7 +55,7 @@ export default function AiLoadingScreen() {
         <PageHeader
           eyebrow="Обучение AI"
           title="Помогите AI лучше понять ваши предпочтения."
-          subtitle="Оцените минимум 10 квартир из контрольного датасета. Чем больше действий, тем точнее будут рекомендации."
+          subtitle="Оцените 5 квартир из контрольного датасета. Чем больше действий, тем точнее будут рекомендации."
         />
         <PrimaryButton title="Оценить квартиры" onPress={() => router.replace({ pathname: '/swipe', params } as never)} />
       </View>

@@ -91,7 +91,6 @@ export function loadYandexMapsApi() {
     const script = document.createElement('script');
     script.async = true;
     script.type = 'text/javascript';
-    script.crossOrigin = 'anonymous';
     script.dataset.goldHouseYandexMapsApi = '3';
     script.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(apiKey)}&lang=ru_RU`;
     script.onload = async () => {

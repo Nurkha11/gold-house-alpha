@@ -1,8 +1,14 @@
-import { Owner, PropertySubmission, SubmissionStatus } from '@/data/ownerTypes';
+import { MediaFile, Owner, PropertyPhoto, PropertySubmission, PropertyVideo, SubmissionStatus } from '@/data/ownerTypes';
 import { Property } from '@/data/properties';
+import { getBalconyLabel, normalizeBalconyType } from '@/data/balconyTypes';
+import { getElevatorLabel, normalizeElevatorData } from '@/data/elevatorTypes';
+import { getParkingLabel, normalizeParkingData } from '@/data/parkingTypes';
+import { createLocalMediaReference } from '@/data/localMediaStore';
 import { createLocation } from '@/data/residentialComplexes';
 
 let currentOwner: Owner | null = null;
+const SUBMISSIONS_STORAGE_KEY = 'gold-house-owner-submissions-v1';
+const OWNER_STORAGE_KEY = 'gold-house-current-owner-v1';
 
 let submissions: PropertySubmission[] = [
   {
@@ -10,7 +16,7 @@ let submissions: PropertySubmission[] = [
     ownerId: 'owner-demo',
     ownerName: 'Нурхан',
     ownerPhone: '+7 777 000 07 07',
-    status: 'reviewing',
+    status: 'pending_moderation',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     address: {
@@ -41,9 +47,15 @@ let submissions: PropertySubmission[] = [
       buildingMaterial: 'Монолит',
       ceilingHeight: '3.0',
       bathroom: 'Раздельный',
-      balcony: 'Да',
-      elevator: 'Да',
-      parking: 'Подземная',
+      balcony: 'Балкон',
+      balconyType: 'balcony',
+      elevator: '2 лифта',
+      elevatorCount: 2,
+      hasFreightElevator: false,
+      parking: 'Подземный паркинг',
+      parkingType: 'underground',
+      hasPrivateParkingSpace: true,
+      parkingSpaceIncludedInPrice: true,
     },
     priceTerms: {
       price: '58500000',
@@ -72,27 +84,117 @@ let submissions: PropertySubmission[] = [
         category: 'apartment',
         name: 'Фото квартиры',
         uri: 'https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=1200&q=80',
+        localUri: 'https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=1200&q=80',
+        remoteUrl: null,
+        fileName: 'demo-apartment-photo.jpg',
+        mimeType: 'image/jpeg',
+        fileSize: null,
+        width: null,
+        height: null,
+        order: 0,
+        isCover: true,
+        uploadStatus: 'local',
+        uploadProgress: 0,
+        errorMessage: null,
+        createdAt: new Date().toISOString(),
       },
     ],
   },
 ];
 
+hydrateSubmissionsFromStorage();
+
 export const statusLabels: Record<SubmissionStatus, string> = {
   draft: 'Черновик',
-  submitted: 'Отправлена',
-  reviewing: 'На проверке',
-  needs_shooting: 'Нужна съемка',
-  approved: 'Одобрена',
+  pending_moderation: 'На модерации',
+  submitted: 'На модерации',
+  sent: 'На модерации',
+  reviewing: 'На модерации',
+  needs_shooting: 'На модерации',
+  approved: 'На модерации',
   published: 'Опубликована',
+  changes_requested: 'Нужны исправления',
   rejected: 'Отклонена',
 };
 
+export function normalizeSubmissionStatus(status: SubmissionStatus | string): SubmissionStatus {
+  if (status === 'submitted' || status === 'sent' || status === 'reviewing' || status === 'needs_shooting' || status === 'approved') {
+    return 'pending_moderation';
+  }
+
+  if (status === 'draft' || status === 'pending_moderation' || status === 'published' || status === 'changes_requested' || status === 'rejected') {
+    return status;
+  }
+
+  return 'draft';
+}
+
+function normalizeSubmission(submission: PropertySubmission) {
+  const normalizedStatus = normalizeSubmissionStatus(submission.status);
+
+  if (submission.status !== normalizedStatus) {
+    submission.status = normalizedStatus;
+  }
+
+  return submission;
+}
+
+function getLocalStorage() {
+  try {
+    return (globalThis as { localStorage?: Storage }).localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function hydrateSubmissionsFromStorage() {
+  const storage = getLocalStorage();
+  const stored = storage?.getItem(SUBMISSIONS_STORAGE_KEY);
+
+  if (!stored) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(stored);
+    if (Array.isArray(parsed)) {
+      submissions = parsed.map((item) => normalizeSubmission(item as PropertySubmission));
+    }
+  } catch {
+    storage?.removeItem(SUBMISSIONS_STORAGE_KEY);
+  }
+}
+
+function persistSubmissions() {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(submissions.map(serializeSubmissionForStorage)));
+  } catch {
+    storage.setItem(
+      SUBMISSIONS_STORAGE_KEY,
+      JSON.stringify(
+        submissions.map((submission) =>
+          serializeSubmissionForStorage({
+            ...submission,
+            media: [],
+          }),
+        ),
+      ),
+    );
+  }
+}
+
 export function loginOwner(name: string, phone: string) {
   currentOwner = {
-    id: `owner-${Date.now()}`,
+    id: getStableOwnerId(formatOwnerPhone(phone)),
     name: name.trim() || 'Собственник',
     phone: formatOwnerPhone(phone),
   };
+  persistOwner(currentOwner);
   return currentOwner;
 }
 
@@ -104,39 +206,150 @@ function formatOwnerPhone(value: string) {
   return `+7${parts.length ? ` ${parts.join(' ')}` : ' '}`;
 }
 
+function normalizeOwnerPhone(value?: string) {
+  const raw = (value ?? '').replace(/\D/g, '');
+  if (!raw) {
+    return '';
+  }
+
+  return raw.startsWith('7') ? raw : `7${raw}`;
+}
+
+function getStableOwnerId(phone: string) {
+  const digits = normalizeOwnerPhone(phone);
+  return digits ? `owner-${digits}` : `owner-${Date.now()}`;
+}
+
+function persistOwner(owner: Owner) {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.setItem(OWNER_STORAGE_KEY, JSON.stringify(owner));
+}
+
+function hydrateOwnerFromStorage() {
+  const storage = getLocalStorage();
+  const stored = storage?.getItem(OWNER_STORAGE_KEY);
+
+  if (!stored) {
+    return null;
+  }
+
+  try {
+    const owner = JSON.parse(stored) as Owner;
+    if (owner?.phone) {
+      return {
+        ...owner,
+        id: getStableOwnerId(owner.phone),
+        phone: formatOwnerPhone(owner.phone),
+      };
+    }
+  } catch {
+    storage?.removeItem(OWNER_STORAGE_KEY);
+  }
+
+  return null;
+}
+
+function serializeMediaFileForStorage(file: MediaFile): MediaFile {
+  if (!isTemporaryLocalMediaUri(file.localUri) && !isTemporaryLocalMediaUri(file.uri)) {
+    return file;
+  }
+
+  return {
+    ...file,
+    uri: isTemporaryLocalMediaUri(file.uri) ? undefined : file.uri,
+    localUri: isTemporaryLocalMediaUri(file.localUri) ? '' : file.localUri,
+  };
+}
+
+function serializeSubmissionForStorage(submission: PropertySubmission) {
+  return normalizeSubmission({
+    ...submission,
+    media: submission.media.map(serializeMediaFileForStorage),
+  });
+}
+
 export function getCurrentOwner() {
+  if (!currentOwner) {
+    currentOwner = hydrateOwnerFromStorage();
+  }
+
   return currentOwner;
 }
 
 export function getOwnerSubmissions(ownerId?: string) {
+  hydrateSubmissionsFromStorage();
+  const owner = getCurrentOwner();
+  const ownerPhone = normalizeOwnerPhone(owner?.phone);
+
   if (!ownerId) {
-    return submissions;
+    return submissions.map(normalizeSubmission);
   }
 
-  return submissions.filter((submission) => submission.ownerId === ownerId || submission.ownerId === 'owner-demo');
+  return submissions
+    .map(normalizeSubmission)
+    .filter(
+      (submission) =>
+        submission.ownerId === ownerId ||
+        (ownerPhone.length > 0 && normalizeOwnerPhone(submission.ownerPhone) === ownerPhone),
+    );
 }
 
 export function getAllSubmissions() {
-  return submissions;
+  hydrateSubmissionsFromStorage();
+  return submissions.map(normalizeSubmission);
 }
 
 export function getSubmissionById(id: string) {
-  return submissions.find((submission) => submission.id === id);
+  hydrateSubmissionsFromStorage();
+  const submission = submissions.find((item) => item.id === id);
+  return submission ? normalizeSubmission(submission) : undefined;
 }
 
-export function updateSubmissionStatus(id: string, status: SubmissionStatus) {
+export function updateSubmissionStatus(id: string, status: SubmissionStatus, adminComment?: string) {
+  hydrateSubmissionsFromStorage();
   const existing = submissions.find((submission) => submission.id === id);
 
   if (!existing) {
     return undefined;
   }
 
-  existing.status = status;
+  existing.status = normalizeSubmissionStatus(status);
+  existing.adminComment = adminComment?.trim() || undefined;
   existing.updatedAt = new Date().toISOString();
+  persistSubmissions();
   return existing;
 }
 
+export function deleteOwnerSubmission(id: string, ownerId?: string) {
+  hydrateSubmissionsFromStorage();
+  const owner = getCurrentOwner();
+  const ownerPhone = normalizeOwnerPhone(owner?.phone);
+  const existing = submissions.find((submission) => submission.id === id);
+
+  if (!existing) {
+    return false;
+  }
+
+  const belongsToOwner =
+    !ownerId ||
+    existing.ownerId === ownerId ||
+    (ownerPhone.length > 0 && normalizeOwnerPhone(existing.ownerPhone) === ownerPhone);
+
+  if (!belongsToOwner) {
+    return false;
+  }
+
+  submissions = submissions.filter((submission) => submission.id !== id);
+  persistSubmissions();
+  return true;
+}
+
 export function updateSubmissionLocationReview(id: string, action: 'confirm_location' | 'request_manual_check' | 'approve_complex' | 'merge_complex') {
+  hydrateSubmissionsFromStorage();
   const existing = submissions.find((submission) => submission.id === id);
 
   if (!existing) {
@@ -158,7 +371,7 @@ export function updateSubmissionLocationReview(id: string, action: 'confirm_loca
       ...location,
       locationWarnings: Array.from(new Set([...(location.locationWarnings ?? []), 'Администратор запросил ручную проверку адреса.'])),
     };
-    existing.status = 'reviewing';
+    existing.status = 'pending_moderation';
   }
 
   if (existing.address.newResidentialComplex && action === 'approve_complex') {
@@ -176,16 +389,21 @@ export function updateSubmissionLocationReview(id: string, action: 'confirm_loca
   }
 
   existing.updatedAt = new Date().toISOString();
+  persistSubmissions();
   return existing;
 }
 
 export function getPublishedProperties(): Property[] {
+  hydrateSubmissionsFromStorage();
   return submissions
+    .map(normalizeSubmission)
     .filter((submission) => submission.status === 'published')
     .map(submissionToProperty);
 }
 
 export function saveSubmission(submission: PropertySubmission) {
+  hydrateSubmissionsFromStorage();
+  submission.status = normalizeSubmissionStatus(submission.status);
   const existingIndex = submissions.findIndex((item) => item.id === submission.id);
 
   if (existingIndex >= 0) {
@@ -194,17 +412,44 @@ export function saveSubmission(submission: PropertySubmission) {
     submissions = [submission, ...submissions];
   }
 
+  persistSubmissions();
   return submission;
 }
 
 function submissionToProperty(submission: PropertySubmission): Property {
-  const photo = submission.media.find((file) => file.type === 'photo')?.uri ?? 'https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=1200&q=80';
-  const images = submission.media.filter((file) => file.type === 'photo' && file.uri).map((file) => file.uri as string);
+  const sortedPhotos = submission.media
+    .filter((file): file is PropertyPhoto => file.type === 'photo' && file.uploadStatus !== 'error')
+    .sort(comparePublishedPhotos);
+  const photo = getPublishedMediaUri(sortedPhotos[0]) || 'https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=1200&q=80';
+  const images = sortedPhotos
+    .map(getPublishedMediaUri)
+    .filter((uri): uri is string => Boolean(uri));
+  const imageGroups = getPublishedImageGroups(sortedPhotos);
+  const videos = submission.media
+    .filter((file): file is PropertyVideo => file.type === 'video' && file.uploadStatus !== 'error')
+    .map((file) => ({
+      label:
+        file.category === 'apartment'
+          ? 'Квартира'
+          : file.category === 'entrance'
+            ? 'Подъезд'
+            : file.category === 'yard'
+              ? 'Двор'
+              : 'Собственник',
+      duration: formatVideoDuration(file.duration),
+      uri: getPublishedMediaUri(file),
+      remoteUrl: file.remoteUrl,
+    }))
+    .filter((file) => Boolean(file.uri));
   const descriptionParts = [
     submission.ownerDescription.likes,
     submission.ownerDescription.minuses ? `Честные минусы: ${submission.ownerDescription.minuses}` : '',
     submission.ownerDescription.fitFor ? `Кому подойдет: ${submission.ownerDescription.fitFor}` : '',
   ].filter(Boolean);
+
+  const balconyType = normalizeBalconyType(submission.characteristics.balconyType, submission.characteristics.balcony);
+  const elevatorData = normalizeElevatorData(submission.characteristics);
+  const parkingData = normalizeParkingData(submission.characteristics);
 
   return {
     id: `published-${submission.id}`,
@@ -218,20 +463,33 @@ function submissionToProperty(submission: PropertySubmission): Property {
     area: Number(submission.characteristics.totalArea || 0),
     floor: Number(submission.characteristics.floor || 1),
     totalFloors: Number(submission.characteristics.totalFloors || 1),
+    floorCategory:
+      Number(submission.characteristics.floor || 1) === 1
+        ? 'first'
+        : Number(submission.characteristics.floor || 1) === Number(submission.characteristics.totalFloors || 1)
+          ? 'last'
+          : 'middle',
     year: Number(submission.characteristics.year || new Date().getFullYear()),
     buildingMaterial: submission.characteristics.buildingMaterial || 'Не указан',
     renovation: submission.condition.renovation || 'Не указан',
     furniture: submission.condition.furniture || 'Не указана',
     appliances: submission.condition.appliances || 'Не указана',
-    balcony: submission.characteristics.balcony || 'Не указан',
-    elevator: submission.characteristics.elevator || 'Не указан',
-    parking: submission.characteristics.parking || 'Не указана',
+    balcony: getBalconyLabel(balconyType),
+    balconyType,
+    elevator: getElevatorLabel(elevatorData),
+    elevatorCount: elevatorData.elevatorCount,
+    hasFreightElevator: elevatorData.hasFreightElevator,
+    parking: getParkingLabel(parkingData),
+    parkingType: parkingData.parkingType,
+    hasPrivateParkingSpace: parkingData.hasPrivateParkingSpace,
+    parkingSpaceIncludedInPrice: parkingData.parkingSpaceIncludedInPrice,
     ceilingHeight: Number(submission.characteristics.ceilingHeight || 2.8),
     matchPercent: 96,
     verified: true,
     image: photo,
     imageUrl: photo,
     images: images.length ? images : [photo],
+    imageGroups,
     description: descriptionParts.join('\n') || 'Объект опубликован после проверки Gold House.',
     tags: ['Gold Verified', 'Trust Index 98 / 100', submission.condition.renovation, submission.address.district].filter(Boolean),
     aiSummary: 'Объект опубликован после проверки Gold House. Данные собственника сохранены для будущего рекомендательного алгоритма.',
@@ -243,13 +501,93 @@ function submissionToProperty(submission: PropertySubmission): Property {
     locationText: submission.address.location
       ? `${submission.address.district}. ${submission.address.location.fullAddress}. Точное расположение подтверждено для модерации; покупателю показываем район и ориентиры.`
       : `${submission.address.district}. ${submission.address.street || submission.address.complexName}. Рядом парк, школа, супермаркет и остановка.`,
-    videos: [
-      { label: 'Квартира', duration: '1:10' },
-      { label: 'Подъезд', duration: '0:35' },
-      { label: 'Двор', duration: '0:42' },
-      { label: 'Собственник', duration: '0:30' },
-    ],
+    videos: videos.length
+      ? videos
+      : [
+          { label: 'Квартира', duration: '1:10' },
+          { label: 'Подъезд', duration: '0:35' },
+          { label: 'Двор', duration: '0:42' },
+          { label: 'Собственник', duration: '0:30' },
+        ],
     ownerName: submission.ownerName,
     ownerPhone: submission.ownerPhone,
   };
+}
+
+function getPublishedMediaUri(file?: MediaFile) {
+  if (!file) {
+    return undefined;
+  }
+
+  if (file.remoteUrl) {
+    return file.remoteUrl;
+  }
+
+  if (file.localUri && !isTemporaryLocalMediaUri(file.localUri)) {
+    return file.localUri;
+  }
+
+  if (file.uri && !isTemporaryLocalMediaUri(file.uri)) {
+    return file.uri;
+  }
+
+  return createLocalMediaReference(file.id);
+}
+
+function getPublishedImageGroups(photos: PropertyPhoto[]) {
+  const labels: Record<PropertyPhoto['category'], string> = {
+    apartment: 'Квартира',
+    yard: 'Двор',
+    entrance: 'Подъезд',
+    view: 'Вид из окна',
+  };
+
+  return (Object.keys(labels) as PropertyPhoto['category'][])
+    .map((category) => ({
+      category,
+      label: labels[category],
+      images: photos
+        .filter((photo) => photo.category === category)
+        .map(getPublishedMediaUri)
+        .filter((uri): uri is string => Boolean(uri)),
+    }))
+    .filter((group) => group.images.length > 0);
+}
+
+function comparePublishedPhotos(a: PropertyPhoto, b: PropertyPhoto) {
+  if (a.isCover !== b.isCover) {
+    return a.isCover ? -1 : 1;
+  }
+
+  const categoryDiff = getPublishedPhotoCategoryRank(a.category) - getPublishedPhotoCategoryRank(b.category);
+  if (categoryDiff !== 0) {
+    return categoryDiff;
+  }
+
+  return a.order - b.order;
+}
+
+function getPublishedPhotoCategoryRank(category: PropertyPhoto['category']) {
+  const rank: Record<PropertyPhoto['category'], number> = {
+    apartment: 0,
+    yard: 1,
+    entrance: 2,
+    view: 3,
+  };
+
+  return rank[category] ?? 99;
+}
+
+function isTemporaryLocalMediaUri(uri?: string) {
+  return Boolean(uri?.startsWith('data:') || uri?.startsWith('blob:'));
+}
+
+function formatVideoDuration(seconds: number | null) {
+  if (!seconds || !Number.isFinite(seconds)) {
+    return '0:00';
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${rest}`;
 }
