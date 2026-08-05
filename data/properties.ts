@@ -9,6 +9,14 @@ export type PropertyVideo = {
   remoteUrl?: string | null;
 };
 
+export type PropertyImageCategory = 'apartment' | 'yard' | 'entrance' | 'view';
+
+export type PropertyImageGroup = {
+  category: PropertyImageCategory;
+  label: string;
+  images: string[];
+};
+
 export type ViewingTime = {
   day: string;
   time: string;
@@ -50,6 +58,7 @@ export type Property = {
   image: string;
   imageUrl: string;
   images: string[];
+  imageGroups?: PropertyImageGroup[];
   description: string;
   tags: string[];
   aiSummary: string;

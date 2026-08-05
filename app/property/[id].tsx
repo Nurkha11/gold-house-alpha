@@ -50,6 +50,44 @@ function cleanText(value?: string) {
   return text;
 }
 
+const mediaCategoryConfig = [
+  { key: 'apartment', label: 'Квартира', videoLabel: 'Квартира' },
+  { key: 'yard', label: 'Двор', videoLabel: 'Двор' },
+  { key: 'entrance', label: 'Подъезд', videoLabel: 'Подъезд' },
+  { key: 'view', label: 'Вид из окна', videoLabel: null },
+  { key: 'owner', label: 'Собственник', videoLabel: 'Собственник' },
+] as const;
+
+function getPropertyImageGroups(property: Property) {
+  if (property.imageGroups?.length) {
+    return property.imageGroups;
+  }
+
+  return [
+    {
+      category: 'apartment' as const,
+      label: 'Квартира',
+      images: property.images?.length ? property.images : [property.imageUrl],
+    },
+  ];
+}
+
+function getVideoForCategory(property: Property, category: (typeof mediaCategoryConfig)[number]) {
+  if (!category.videoLabel) {
+    return undefined;
+  }
+
+  const fallbackIndexByKey = {
+    apartment: 0,
+    yard: 2,
+    entrance: 1,
+    view: -1,
+    owner: 3,
+  } as const;
+  const exact = property.videos.find((video) => video.label.toLowerCase() === category.videoLabel.toLowerCase());
+  return exact ?? property.videos[fallbackIndexByKey[category.key]];
+}
+
 function useResolvedMediaUris(uris: string[]) {
   const [resolvedUris, setResolvedUris] = useState(uris);
 
@@ -97,11 +135,16 @@ export default function PropertyDetailsScreen() {
   const { width } = useWindowDimensions();
   const isWideLayout = width >= 900;
   const property = getBuyerPropertyById(id) ?? getBuyerProperties()[0] ?? properties[0];
-  const gallery = property.images?.length ? property.images : [property.imageUrl];
+  const imageGroups = useMemo(() => getPropertyImageGroups(property), [property]);
+  const apartmentImageGroup = imageGroups.find((group) => group.category === 'apartment');
+  const gallery = apartmentImageGroup?.images.length ? apartmentImageGroup.images : property.images?.length ? property.images : [property.imageUrl];
+  const groupedPhotoUris = useMemo(() => imageGroups.flatMap((group) => group.images), [imageGroups]);
   const resolvedGallery = useResolvedMediaUris(gallery);
+  const resolvedGroupedPhotoUris = useResolvedMediaUris(groupedPhotoUris);
   const videoUris = property.videos.map((video) => video.uri).filter((uri): uri is string => Boolean(uri));
   const resolvedVideoUris = useResolvedMediaUris(videoUris);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
   const [viewingVisible, setViewingVisible] = useState(false);
   const [viewingSent, setViewingSent] = useState(false);
   const [selectedDate, setSelectedDate] = useState('Завтра');
@@ -116,6 +159,13 @@ export default function PropertyDetailsScreen() {
     });
     return map;
   }, [resolvedVideoUris, videoUris.join('|')]);
+  const resolvedPhotoByUri = useMemo(() => {
+    const map = new Map<string, string>();
+    groupedPhotoUris.forEach((uri, index) => {
+      map.set(uri, resolvedGroupedPhotoUris[index] ?? uri);
+    });
+    return map;
+  }, [resolvedGroupedPhotoUris, groupedPhotoUris.join('|')]);
   const detailVideoHeight = isWideLayout ? 292 : 190;
 
   useEffect(() => {
@@ -162,8 +212,10 @@ export default function PropertyDetailsScreen() {
         contentContainerStyle={[styles.scrollContent, isWideLayout && styles.scrollContentWide]}
       >
       <View style={[styles.galleryWrap, isWideLayout && styles.galleryWrapWide]}>
-        <ResolvedImage uri={activePhoto} style={[styles.hero, isWideLayout && styles.heroWide]} resizeMode="cover" />
-        <View style={styles.heroOverlay} />
+        <Pressable onPress={() => setFullscreenPhoto(activePhoto)}>
+          <ResolvedImage uri={activePhoto} style={[styles.hero, isWideLayout && styles.heroWide]} resizeMode="cover" />
+        </Pressable>
+        <View style={styles.heroOverlay} pointerEvents="none" />
         <View style={styles.topControls}>
           <Pressable style={styles.iconButton} onPress={() => router.back()}>
             <Text style={styles.iconText}>‹</Text>
@@ -180,7 +232,7 @@ export default function PropertyDetailsScreen() {
         <View style={styles.heroBadges}>
           <Badge label="Gold Verified" />
           <View style={styles.photoCounter}>
-            <Text style={styles.photoCounterText}>{photoIndex + 1} / 24</Text>
+            <Text style={styles.photoCounterText}>{photoIndex + 1} / {gallery.length}</Text>
           </View>
         </View>
         <View style={[styles.galleryNav, isWideLayout && styles.galleryNavWide]}>
@@ -232,30 +284,70 @@ export default function PropertyDetailsScreen() {
       <InfoBlock title="Индекс доверия" header="98 из 100" items={['Фото актуальны', 'Видео актуально', 'Собственник подтвержден', 'Геолокация подтверждена', 'Документы проверены']} />
 
       <View style={styles.block}>
-        <Text style={styles.blockTitle}>Видео и фото</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.videoRow}>
-          {['Квартира', 'Подъезд', 'Двор', 'Собственник'].map((label, index) => (
-            <View key={label} style={[styles.videoCard, property.videos[index]?.uri && styles.videoPlayerCard, property.videos[index]?.uri && isWideLayout && styles.videoPlayerCardWide]}>
-              {property.videos[index]?.uri && Platform.OS === 'web'
-                ? React.createElement('video', {
-                    src: resolvedVideoByUri.get(property.videos[index]?.uri ?? '') ?? property.videos[index]?.remoteUrl ?? property.videos[index]?.uri,
-                    controls: true,
-                    preload: 'metadata',
-                    style: {
-                      width: '100%',
-                      height: detailVideoHeight,
-                      borderRadius: 14,
-                      backgroundColor: colors.black,
-                      objectFit: 'contain',
-                    },
-                  })
-                : null}
-              <Text style={styles.play}>▶</Text>
-              <Text style={styles.videoLabel}>{property.videos[index]?.label ?? label}</Text>
-              <Text style={styles.videoDuration}>{property.videos[index]?.duration ?? '0:40'}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        <Text style={styles.blockTitle}>Фото и видео</Text>
+        <View style={styles.mediaCategories}>
+          {mediaCategoryConfig.map((category) => {
+            const images =
+              category.key === 'owner'
+                ? []
+                : imageGroups.find((group) => group.category === category.key)?.images ?? [];
+            const video = getVideoForCategory(property, category);
+            const resolvedVideoUri = video?.uri ? resolvedVideoByUri.get(video.uri) ?? video.remoteUrl ?? video.uri : undefined;
+            const hasMedia = images.length > 0 || Boolean(resolvedVideoUri);
+
+            if (!hasMedia) {
+              return null;
+            }
+
+            return (
+              <View key={category.key} style={styles.mediaCategory}>
+                <View style={styles.mediaCategoryHeader}>
+                  <Text style={styles.mediaCategoryTitle}>{category.label}</Text>
+                  <Text style={styles.mediaCategoryMeta}>
+                    {images.length ? `${images.length} фото` : 'Фото не загружены'}
+                    {resolvedVideoUri ? ' · 1 видео' : ''}
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
+                  {images.map((uri, imageIndex) => (
+                    <Pressable
+                      key={`${category.key}-${uri}-${imageIndex}`}
+                      style={styles.mediaPhotoButton}
+                      onPress={() => setFullscreenPhoto(resolvedPhotoByUri.get(uri) ?? uri)}
+                    >
+                      <ResolvedImage
+                        uri={resolvedPhotoByUri.get(uri) ?? uri}
+                        style={styles.mediaPhoto}
+                        resizeMode="cover"
+                      />
+                    </Pressable>
+                  ))}
+                  {resolvedVideoUri ? (
+                    <View style={[styles.videoCard, styles.videoPlayerCard, isWideLayout && styles.videoPlayerCardWide]}>
+                      {Platform.OS === 'web'
+                        ? React.createElement('video', {
+                            src: resolvedVideoUri,
+                            controls: true,
+                            preload: 'metadata',
+                            style: {
+                              width: '100%',
+                              height: detailVideoHeight,
+                              borderRadius: 14,
+                              backgroundColor: colors.black,
+                              objectFit: 'contain',
+                            },
+                          })
+                        : null}
+                      <Text style={styles.play}>▶</Text>
+                      <Text style={styles.videoLabel}>{video?.label ?? category.label}</Text>
+                      <Text style={styles.videoDuration}>{video?.duration ?? '0:40'}</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </View>
+            );
+          })}
+        </View>
       </View>
 
       <InfoBlock title="Цифровой паспорт" items={['Документы проверены', 'Геолокация подтверждена', 'Фото соответствуют', 'Видео актуально']} />
@@ -370,6 +462,17 @@ export default function PropertyDetailsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal transparent visible={Boolean(fullscreenPhoto)} animationType="fade" onRequestClose={() => setFullscreenPhoto(null)}>
+        <View style={styles.photoModalBackdrop}>
+          <Pressable style={styles.photoModalClose} onPress={() => setFullscreenPhoto(null)}>
+            <Text style={styles.photoModalCloseText}>×</Text>
+          </Pressable>
+          {fullscreenPhoto ? (
+            <ResolvedImage uri={fullscreenPhoto} style={styles.photoModalImage} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -446,6 +549,14 @@ const styles = StyleSheet.create({
   description: { color: colors.text, fontSize: 16, lineHeight: 25 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   videoRow: { gap: spacing.md },
+  mediaCategories: { gap: spacing.lg },
+  mediaCategory: { gap: spacing.sm },
+  mediaCategoryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: spacing.md },
+  mediaCategoryTitle: { color: colors.text, fontSize: 17, fontWeight: '900' },
+  mediaCategoryMeta: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  mediaRow: { gap: spacing.md },
+  mediaPhotoButton: { width: 190, height: 132, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface },
+  mediaPhoto: { width: 190, height: 132, borderRadius: radius.md, backgroundColor: colors.surface },
   videoCard: { width: 140, height: 112, borderRadius: radius.md, backgroundColor: colors.black, padding: spacing.md, justifyContent: 'space-between' },
   videoPlayerCard: { width: 340, height: 276, backgroundColor: colors.black },
   videoPlayerCardWide: { width: 520, height: 376 },
@@ -485,4 +596,8 @@ const styles = StyleSheet.create({
   modalText: { color: colors.muted, fontSize: 16, lineHeight: 24 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   modalOption: { flexGrow: 1 },
+  photoModalBackdrop: { flex: 1, backgroundColor: 'rgba(13,13,13,0.94)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  photoModalImage: { width: '100%', height: '100%' },
+  photoModalClose: { position: 'absolute', top: spacing.xl, right: spacing.xl, zIndex: 3, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.94)', alignItems: 'center', justifyContent: 'center' },
+  photoModalCloseText: { color: colors.text, fontSize: 30, lineHeight: 34, fontWeight: '900' },
 });

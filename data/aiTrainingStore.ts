@@ -328,16 +328,7 @@ export function scorePropertyForTraining(property: Property) {
 export function getTrainingStream(limit = 5) {
   const filtered = getHardFilteredProperties().sort((a, b) => a.id.localeCompare(b.id));
 
-  if (!filtered.length) {
-    return [];
-  }
-
-  const stream: Property[] = [];
-  while (stream.length < Math.max(limit, 5)) {
-    stream.push(...filtered);
-  }
-
-  return stream.slice(0, Math.max(limit, 5));
+  return filtered.slice(0, limit);
 }
 
 export function getPersonalRecommendations(limit = 3) {

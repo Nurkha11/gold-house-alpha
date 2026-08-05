@@ -9,7 +9,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { ResolvedImage } from '@/components/ResolvedImage';
 import { Screen } from '@/components/Screen';
 import { colors, radius, shadows, spacing } from '@/constants/theme';
-import { getRatedPropertyIds, getRatingCount, getTrainingStream, recordTrainingSignal, scorePropertyForTraining } from '@/data/aiTrainingStore';
+import { getHardFilteredProperties, getRatingCount, getTrainingStream, recordTrainingSignal, scorePropertyForTraining } from '@/data/aiTrainingStore';
 import { Property } from '@/data/properties';
 
 const minimumRatings = 5;
@@ -21,18 +21,24 @@ function matchPercent(property: Property) {
 export default function SwipeScreen() {
   const params = useLocalSearchParams<{ selectedDistricts?: string; district?: string; rooms?: string; trainingMode?: string; targetRatingCount?: string }>();
   const { width } = useWindowDimensions();
-  const [ratedIds, setRatedIds] = useState<string[]>(() => getRatedPropertyIds());
   const [ratingCount, setRatingCount] = useState(() => getRatingCount());
+  const [initialRatingCount] = useState(() => getRatingCount());
+  const currentSessionRatedCount = Math.max(ratingCount - initialRatingCount, 0);
+  const availableCount = useMemo(() => getHardFilteredProperties().length, []);
+  const effectiveMinimumRatings = Math.max(1, Math.min(minimumRatings, availableCount));
   const [targetRatingCount] = useState(() => {
     const currentCount = getRatingCount();
     if (params.targetRatingCount) return Number(params.targetRatingCount);
-    return currentCount + minimumRatings;
+    return currentCount + effectiveMinimumRatings;
   });
 
-  const stream = useMemo(() => getTrainingStream(targetRatingCount), [targetRatingCount]);
-  const currentIndex = Math.min(ratedIds.length, stream.length - 1);
+  const sessionTargetCount = Math.max(0, targetRatingCount - (ratingCount - currentSessionRatedCount));
+  const streamLimit = Math.max(effectiveMinimumRatings, sessionTargetCount);
+  const stream = useMemo(() => getTrainingStream(streamLimit), [streamLimit]);
+  const currentIndex = currentSessionRatedCount;
   const current = stream[currentIndex];
-  const remaining = Math.max(targetRatingCount - ratingCount, 0);
+  const hasExhaustedCurrentStream = stream.length > 0 && currentSessionRatedCount >= stream.length;
+  const remaining = Math.max(Math.min(targetRatingCount - ratingCount, stream.length - currentSessionRatedCount), 0);
   const selectedDistricts = String(params.selectedDistricts ?? params.district ?? '')
     .split(',')
     .map((district) => district.trim())
@@ -44,12 +50,22 @@ export default function SwipeScreen() {
   function rate(property: Property, type: 'like' | 'dislike') {
     recordTrainingSignal(property.id, type);
     const nextCount = ratingCount + 1;
+    const nextSessionRatedCount = currentSessionRatedCount + 1;
+    const ratedAllAvailableBeforeFive = stream.length < minimumRatings && nextSessionRatedCount >= stream.length;
     setRatingCount(nextCount);
-    setRatedIds((ids) => [...ids, property.id]);
 
-    if (nextCount >= targetRatingCount) {
+    if (nextCount >= targetRatingCount && !ratedAllAvailableBeforeFive) {
       router.replace({ pathname: '/ai-analysis', params } as never);
     }
+  }
+
+  function goToNextStep() {
+    if (ratingCount > 0) {
+      router.replace({ pathname: '/ai-analysis', params } as never);
+      return;
+    }
+
+    router.replace({ pathname: '/personal-recommendations', params } as never);
   }
 
   return (
@@ -58,11 +74,17 @@ export default function SwipeScreen() {
       <PageHeader
         eyebrow="AI изучает вкус"
         title="Оцените несколько квартир."
-        subtitle={remaining > 0 ? `Осталось оценить: ${remaining}. После этого AI соберет персональные рекомендации.` : 'Достаточно сигналов для анализа.'}
+        subtitle={
+          availableCount <= 1
+            ? 'В выбранных критериях найден один вариант. Оцените его, и AI сразу покажет следующий шаг.'
+            : remaining > 0
+              ? `Осталось оценить: ${remaining}. После этого AI соберет персональные рекомендации.`
+              : 'Достаточно сигналов для анализа.'
+        }
       />
 
       <View style={styles.counter}>
-        <Text style={styles.counterText}>{Math.min(ratingCount, targetRatingCount)} / {targetRatingCount} оценок</Text>
+        <Text style={styles.counterText}>{Math.min(currentSessionRatedCount, stream.length)} / {stream.length || effectiveMinimumRatings} оценок</Text>
       </View>
 
       {current ? (
@@ -74,6 +96,16 @@ export default function SwipeScreen() {
           onDislike={() => rate(current, 'dislike')}
           onDetails={() => router.push({ pathname: '/property/[id]', params: { id: current.id, source: 'training', targetRatingCount: String(targetRatingCount) } })}
         />
+      ) : hasExhaustedCurrentStream ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Вариантов больше нет.</Text>
+          <Text style={styles.emptyText}>
+            В районе {selectedDistrictLabel} по выбранным критериям мы показали все доступные квартиры. Можно перейти к анализу или изменить район, комнатность и этажи.
+          </Text>
+          <PrimaryButton title="Перейти к анализу AI" onPress={goToNextStep} />
+          <PrimaryButton title="Начать новый поиск" variant="secondary" onPress={() => router.replace('/' as never)} />
+          <PrimaryButton title="Вернуться к выбору района" variant="ghost" onPress={() => router.replace({ pathname: '/district', params } as never)} />
+        </View>
       ) : (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>Квартир пока нет.</Text>

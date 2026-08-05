@@ -424,6 +424,7 @@ function submissionToProperty(submission: PropertySubmission): Property {
   const images = sortedPhotos
     .map(getPublishedMediaUri)
     .filter((uri): uri is string => Boolean(uri));
+  const imageGroups = getPublishedImageGroups(sortedPhotos);
   const videos = submission.media
     .filter((file): file is PropertyVideo => file.type === 'video' && file.uploadStatus !== 'error')
     .map((file) => ({
@@ -488,6 +489,7 @@ function submissionToProperty(submission: PropertySubmission): Property {
     image: photo,
     imageUrl: photo,
     images: images.length ? images : [photo],
+    imageGroups,
     description: descriptionParts.join('\n') || 'Объект опубликован после проверки Gold House.',
     tags: ['Gold Verified', 'Trust Index 98 / 100', submission.condition.renovation, submission.address.district].filter(Boolean),
     aiSummary: 'Объект опубликован после проверки Gold House. Данные собственника сохранены для будущего рекомендательного алгоритма.',
@@ -530,6 +532,26 @@ function getPublishedMediaUri(file?: MediaFile) {
   }
 
   return createLocalMediaReference(file.id);
+}
+
+function getPublishedImageGroups(photos: PropertyPhoto[]) {
+  const labels: Record<PropertyPhoto['category'], string> = {
+    apartment: 'Квартира',
+    yard: 'Двор',
+    entrance: 'Подъезд',
+    view: 'Вид из окна',
+  };
+
+  return (Object.keys(labels) as PropertyPhoto['category'][])
+    .map((category) => ({
+      category,
+      label: labels[category],
+      images: photos
+        .filter((photo) => photo.category === category)
+        .map(getPublishedMediaUri)
+        .filter((uri): uri is string => Boolean(uri)),
+    }))
+    .filter((group) => group.images.length > 0);
 }
 
 function comparePublishedPhotos(a: PropertyPhoto, b: PropertyPhoto) {
